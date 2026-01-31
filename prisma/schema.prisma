@@ -1,0 +1,792 @@
+// TaskerTime - Schéma de Base de Données
+// Application pour indépendants et professions libérales
+// Conformité: Factur-X 2026 & Chorus Pro
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// UTILISATEURS & AUTHENTIFICATION
+// ============================================================================
+
+model User {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  passwordHash      String?  // Null si auth OAuth
+  firstName         String
+  lastName          String
+  phone             String?
+  avatar            String?  // URL image profil
+  
+  // Identité professionnelle (obligatoire Factur-X)
+  siret             String?  @unique
+  siren             String?
+  tvaIntracom       String?  // FR + SIREN + clé
+  rcs               String?  // "Paris B 123 456 789"
+  capitalSocial     Decimal? @db.Decimal(10, 2)
+  formeJuridique    String?  // SASU, EURL, EI, etc.
+  
+  // Activité principale
+  activite          String?  // "Consultant IT", "Coach sportif", etc.
+  
+  // Adresse professionnelle
+  adresseRue        String?
+  adresseCP         String?
+  adresseVille      String?
+  adressePays       String   @default("FR")
+  
+  // Paramètres métier
+  tauxHoraireDefaut Decimal  @default(0) @db.Decimal(10, 2)
+  tvaApplicable     Boolean  @default(false)
+  tauxTva           Decimal  @default(20) @db.Decimal(5, 2)
+  mentionTvaExo     String?  // "TVA non applicable, art. 293 B du CGI"
+  
+  // Numérotation factures/devis
+  prefixeFacture    String   @default("F")
+  prefixeDevis      String   @default("D")
+  prochainNumFacture Int     @default(1)
+  prochainNumDevis   Int     @default(1)
+  
+  // Coordonnées bancaires
+  iban              String?
+  bic               String?
+  banque            String?
+  
+  // Paramètres Qualiopi / NDA (pour formateurs)
+  numeroNda         String?
+  certifQualiopi    Boolean  @default(false)
+  dateQualiopi      DateTime?
+  
+  // Stripe Connect (pour paiements)
+  stripeAccountId   String?
+  stripeOnboarded   Boolean  @default(false)
+  
+  // Préférences
+  langue            String   @default("fr") // fr, en
+  theme             String   @default("light") // light, dark
+  
+  // Disponibilités par défaut (JSON)
+  disponibilitesDefaut Json?
+  
+  // Métadonnées
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  emailVerified     DateTime?
+  
+  // Relations
+  clients           Client[]
+  prestations       Prestation[]
+  events            Event[]
+  quotes            Quote[]
+  invoices          Invoice[]
+  contracts         Contract[]
+  documents         Document[]
+  availabilityLinks AvailabilityLink[]
+  notifications     Notification[]
+  settings          UserSettings?
+  
+  @@map("users")
+}
+
+// ============================================================================
+// CLIENTS
+// ============================================================================
+
+model Client {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Type de client
+  type              ClientType @default(PARTICULIER)
+  
+  // Identification
+  raisonSociale     String?  // Pour entreprises
+  nom               String
+  prenom            String?
+  siret             String?
+  tvaIntracom       String?
+  
+  // Contact
+  email             String
+  telephone         String?
+  
+  // Adresse
+  adresseRue        String?
+  adresseCP         String?
+  adresseVille      String?
+  adressePays       String   @default("FR")
+  
+  // Accès espace client
+  passwordHash      String?  // Pour connexion espace client
+  lastLogin         DateTime?
+  
+  // Spécificités Chorus Pro (secteur public)
+  isChorusPro       Boolean  @default(false)
+  codeService       String?
+  numeroEngagement  String?
+  
+  // Conditions commerciales
+  tauxHoraireClient Decimal? @db.Decimal(10, 2)
+  delaiPaiement     Int      @default(30) // jours
+  modePaiement      ModePaiement @default(VIREMENT)
+  
+  // CRM - Notes et tags
+  notes             String?
+  tags              String[] @default([])
+  
+  // Métadonnées
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  isArchived        Boolean  @default(false)
+  
+  // Relations
+  events            Event[]
+  quotes            Quote[]
+  invoices          Invoice[]
+  contracts         Contract[]
+  documents         Document[]
+  interactions      ClientInteraction[]
+  
+  @@map("clients")
+}
+
+model ClientInteraction {
+  id          String   @id @default(uuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  type        InteractionType
+  titre       String
+  contenu     String?
+  date        DateTime @default(now())
+  
+  createdAt   DateTime @default(now())
+  
+  @@map("client_interactions")
+}
+
+enum ClientType {
+  PARTICULIER
+  ENTREPRISE
+  ASSOCIATION
+  ETABLISSEMENT_PUBLIC
+}
+
+enum ModePaiement {
+  VIREMENT
+  CHEQUE
+  CB
+  ESPECES
+  PRELEVEMENT
+  STRIPE
+}
+
+enum InteractionType {
+  NOTE
+  APPEL
+  EMAIL
+  REUNION
+  AUTRE
+}
+
+// ============================================================================
+// CATALOGUE DE PRESTATIONS
+// ============================================================================
+
+model Prestation {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Informations
+  nom               String
+  description       String?
+  
+  // Tarification
+  typeTarif         TypeTarif @default(HORAIRE)
+  tauxHoraire       Decimal?  @db.Decimal(10, 2)
+  prixForfait       Decimal?  @db.Decimal(10, 2)
+  dureeMinutes      Int       @default(60) // Durée par défaut
+  
+  // TVA spécifique (si différent du défaut user)
+  tauxTvaSpecifique Decimal?  @db.Decimal(5, 2)
+  
+  // Catégorie / Organisation
+  categorie         String?
+  couleur           String    @default("#3B82F6") // Pour le calendrier
+  
+  // Statut
+  isActive          Boolean   @default(true)
+  
+  // Métadonnées
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  events            Event[]
+  quoteLines        QuoteLine[]
+  invoiceLines      InvoiceLine[]
+  
+  @@map("prestations")
+}
+
+enum TypeTarif {
+  HORAIRE    // Taux horaire x durée
+  FORFAIT    // Prix fixe
+  JOURNALIER // Taux journalier
+}
+
+// ============================================================================
+// ÉVÉNEMENTS CALENDRIER
+// ============================================================================
+
+model Event {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  clientId          String?
+  client            Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  
+  prestationId      String?
+  prestation        Prestation? @relation(fields: [prestationId], references: [id], onDelete: SetNull)
+  
+  // Informations
+  titre             String
+  description       String?
+  lieu              String?
+  isDistanciel      Boolean  @default(false)
+  lienVisio         String?
+  
+  // Temporalité
+  dateDebut         DateTime
+  dateFin           DateTime
+  isAllDay          Boolean  @default(false)
+  
+  // Récurrence (format iCal RRULE)
+  recurrenceRule    String?
+  recurrenceId      String?
+  
+  // Type
+  type              EventType @default(PRESTATION)
+  
+  // Valorisation
+  tauxHoraire       Decimal?  @db.Decimal(10, 2)
+  montantFixe       Decimal?  @db.Decimal(10, 2)
+  dureeHeures       Decimal   @default(0) @db.Decimal(5, 2)
+  montantCalcule    Decimal   @default(0) @db.Decimal(10, 2)
+  
+  // Statut
+  statut            EventStatus @default(PLANIFIE)
+  
+  // Lien facturation
+  quoteLineId       String?
+  invoiceLineId     String?
+  
+  // Rappels envoyés
+  rappelEnvoye      Boolean  @default(false)
+  
+  // Métadonnées
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("events")
+}
+
+enum EventType {
+  PRESTATION
+  REUNION
+  PERSONNEL
+  AUTRE
+}
+
+enum EventStatus {
+  PLANIFIE
+  CONFIRME
+  EN_COURS
+  REALISE
+  ANNULE
+  REPORTE
+}
+
+// ============================================================================
+// DEVIS
+// ============================================================================
+
+model Quote {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  clientId          String
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  // Numérotation
+  numero            String
+  
+  // Dates
+  dateEmission      DateTime @default(now())
+  dateValidite      DateTime
+  
+  // Montants
+  totalHT           Decimal  @db.Decimal(10, 2)
+  totalTVA          Decimal  @db.Decimal(10, 2)
+  totalTTC          Decimal  @db.Decimal(10, 2)
+  
+  // Acompte demandé
+  acompteRequis     Boolean  @default(false)
+  acomptePourcent   Decimal? @db.Decimal(5, 2)
+  acompteMontant    Decimal? @db.Decimal(10, 2)
+  
+  // Statut
+  statut            QuoteStatus @default(BROUILLON)
+  
+  // Conditions
+  conditions        String?
+  notes             String?
+  
+  // Signature client
+  signedAt          DateTime?
+  signatureData     String?  // Base64 de la signature
+  signedByIp        String?
+  
+  // Conversion en facture
+  invoiceId         String?  @unique
+  
+  // Métadonnées
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  lines             QuoteLine[]
+  documents         Document[]
+  
+  @@map("quotes")
+}
+
+model QuoteLine {
+  id            String   @id @default(uuid())
+  quoteId       String
+  quote         Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  
+  prestationId  String?
+  prestation    Prestation? @relation(fields: [prestationId], references: [id], onDelete: SetNull)
+  
+  // Détails
+  description   String
+  quantite      Decimal  @db.Decimal(10, 2)
+  unite         String   @default("heure") // heure, jour, forfait, unité
+  prixUnitaire  Decimal  @db.Decimal(10, 2)
+  tauxTva       Decimal  @db.Decimal(5, 2)
+  
+  // Totaux
+  totalHT       Decimal  @db.Decimal(10, 2)
+  totalTVA      Decimal  @db.Decimal(10, 2)
+  totalTTC      Decimal  @db.Decimal(10, 2)
+  
+  // Ordre d'affichage
+  ordre         Int      @default(0)
+  
+  @@map("quote_lines")
+}
+
+enum QuoteStatus {
+  BROUILLON
+  ENVOYE
+  VU
+  ACCEPTE
+  REFUSE
+  EXPIRE
+  CONVERTI
+}
+
+// ============================================================================
+// FACTURES (Conformes Factur-X 2026)
+// ============================================================================
+
+model Invoice {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  clientId          String
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  // Numérotation
+  numero            String
+  
+  // Dates
+  dateEmission      DateTime @default(now())
+  dateEcheance      DateTime
+  
+  // Montants
+  totalHT           Decimal  @db.Decimal(10, 2)
+  totalTVA          Decimal  @db.Decimal(10, 2)
+  totalTTC          Decimal  @db.Decimal(10, 2)
+  
+  // Paiements
+  montantPaye       Decimal  @default(0) @db.Decimal(10, 2)
+  resteAPayer       Decimal  @db.Decimal(10, 2)
+  
+  // Statut
+  statut            InvoiceStatus @default(BROUILLON)
+  
+  // Conditions
+  conditions        String?
+  notes             String?
+  mentionsLegales   String?
+  
+  // Factur-X
+  facturxXml        String?  // XML Factur-X généré
+  facturxPdf        String?  // Chemin PDF/A-3
+  facturxProfile    String   @default("BASIC") // MINIMUM, BASIC, EN16931
+  
+  // Chorus Pro
+  isChorusPro       Boolean  @default(false)
+  chorusIdFlux      String?
+  chorusStatut      String?
+  chorusDateDepot   DateTime?
+  
+  // Stripe
+  stripePaymentIntent String?
+  stripePaymentUrl    String?
+  
+  // Relances
+  nombreRelances    Int      @default(0)
+  derniereRelance   DateTime?
+  
+  // Métadonnées
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  lines             InvoiceLine[]
+  payments          Payment[]
+  documents         Document[]
+  
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id            String   @id @default(uuid())
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  prestationId  String?
+  prestation    Prestation? @relation(fields: [prestationId], references: [id], onDelete: SetNull)
+  
+  // Détails
+  description   String
+  quantite      Decimal  @db.Decimal(10, 2)
+  unite         String   @default("heure")
+  prixUnitaire  Decimal  @db.Decimal(10, 2)
+  tauxTva       Decimal  @db.Decimal(5, 2)
+  
+  // Totaux
+  totalHT       Decimal  @db.Decimal(10, 2)
+  totalTVA      Decimal  @db.Decimal(10, 2)
+  totalTTC      Decimal  @db.Decimal(10, 2)
+  
+  // Ordre
+  ordre         Int      @default(0)
+  
+  @@map("invoice_lines")
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  montant       Decimal  @db.Decimal(10, 2)
+  mode          ModePaiement
+  reference     String?
+  datePaiement  DateTime
+  
+  // Stripe
+  stripePaymentId String?
+  
+  notes         String?
+  createdAt     DateTime @default(now())
+  
+  @@map("payments")
+}
+
+enum InvoiceStatus {
+  BROUILLON
+  ENVOYEE
+  VUE
+  PARTIELLEMENT_PAYEE
+  PAYEE
+  EN_RETARD
+  ANNULEE
+  AVOIR
+}
+
+// ============================================================================
+// CONTRATS
+// ============================================================================
+
+model Contract {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  clientId        String?
+  client          Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  
+  // Informations
+  nom             String
+  description     String?
+  
+  // Fichier
+  fichierOriginal String?  // Chemin fichier uploadé
+  fichierSigne    String?  // Chemin fichier signé
+  
+  // Statut
+  statut          ContractStatus @default(BROUILLON)
+  
+  // Signature
+  dateEnvoi       DateTime?
+  signedAt        DateTime?
+  signatureData   String?
+  signedByIp      String?
+  signedByName    String?
+  
+  // Métadonnées
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("contracts")
+}
+
+enum ContractStatus {
+  BROUILLON
+  ENVOYE
+  VU
+  SIGNE
+  REFUSE
+  EXPIRE
+}
+
+// ============================================================================
+// DOCUMENTS
+// ============================================================================
+
+model Document {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  clientId        String?
+  client          Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  
+  quoteId         String?
+  quote           Quote?   @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  
+  invoiceId       String?
+  invoice         Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  
+  // Informations
+  nom             String
+  type            DocumentType
+  mimeType        String
+  taille          Int
+  
+  // Stockage
+  storagePath     String
+  storageUrl      String?
+  
+  // Partage client
+  isSharedWithClient Boolean @default(false)
+  
+  createdAt       DateTime @default(now())
+  
+  @@map("documents")
+}
+
+enum DocumentType {
+  DEVIS_PDF
+  FACTURE_PDF
+  FACTURE_XML
+  CONTRAT
+  AUTRE
+}
+
+// ============================================================================
+// LIENS DE DISPONIBILITÉ (Type Calendly)
+// ============================================================================
+
+model AvailabilityLink {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Identifiant public
+  slug              String   @unique
+  
+  // Configuration
+  nom               String
+  description       String?
+  dureeMinutes      Int      @default(60)
+  
+  // Prestation associée (optionnel)
+  prestationId      String?
+  
+  // Disponibilités
+  disponibilites    Json?
+  
+  // Contraintes
+  delaiMinReservation Int    @default(24)
+  delaiMaxReservation Int    @default(30)
+  bufferAvant         Int    @default(0)
+  bufferApres         Int    @default(15)
+  
+  // Tarif affiché
+  afficherTarif     Boolean  @default(false)
+  tarifAffiche      Decimal? @db.Decimal(10, 2)
+  
+  // Acompte requis
+  acompteRequis     Boolean  @default(false)
+  acomptePourcent   Decimal? @db.Decimal(5, 2)
+  
+  // Couleur
+  couleur           String   @default("#10B981")
+  
+  isActive          Boolean  @default(true)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  bookings          Booking[]
+  
+  @@map("availability_links")
+}
+
+model Booking {
+  id                  String   @id @default(uuid())
+  availabilityLinkId  String
+  availabilityLink    AvailabilityLink @relation(fields: [availabilityLinkId], references: [id], onDelete: Cascade)
+  
+  // Créneau
+  dateDebut           DateTime
+  dateFin             DateTime
+  
+  // Contact
+  nom                 String
+  prenom              String
+  email               String
+  telephone           String?
+  entreprise          String?
+  message             String?
+  
+  // Statut
+  statut              BookingStatus @default(EN_ATTENTE)
+  
+  // Paiement acompte
+  acomptePaye         Boolean  @default(false)
+  stripePaymentIntent String?
+  
+  // Événement créé
+  eventId             String?
+  
+  // Confirmation
+  confirmedAt         DateTime?
+  cancelledAt         DateTime?
+  cancelReason        String?
+  
+  // Token modification
+  token               String   @unique @default(uuid())
+  
+  createdAt           DateTime @default(now())
+  
+  @@map("bookings")
+}
+
+enum BookingStatus {
+  EN_ATTENTE
+  CONFIRME
+  ANNULE_CLIENT
+  ANNULE_PRO
+  REALISE
+  NO_SHOW
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type        NotificationType
+  titre       String
+  message     String
+  
+  entityType  String?
+  entityId    String?
+  
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  
+  createdAt   DateTime @default(now())
+  
+  @@map("notifications")
+}
+
+enum NotificationType {
+  NOUVELLE_RESERVATION
+  RESERVATION_ANNULEE
+  DEVIS_ACCEPTE
+  DEVIS_REFUSE
+  FACTURE_PAYEE
+  FACTURE_EN_RETARD
+  PAIEMENT_RECU
+  CONTRAT_SIGNE
+  RAPPEL_RDV
+}
+
+// ============================================================================
+// PARAMÈTRES UTILISATEUR
+// ============================================================================
+
+model UserSettings {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Notifications
+  notifEmail          Boolean  @default(true)
+  notifPush           Boolean  @default(true)
+  
+  // Relances automatiques
+  relanceAuto         Boolean  @default(true)
+  relanceJ1           Boolean  @default(true)  // J+1 après échéance
+  relanceJ7           Boolean  @default(true)  // J+7
+  relanceJ15          Boolean  @default(true)  // J+15
+  relanceJ30          Boolean  @default(false) // J+30
+  
+  // Rappels RDV
+  rappelRdv24h        Boolean  @default(true)
+  rappelRdv1h         Boolean  @default(false)
+  
+  // Google Calendar
+  googleCalendarSync  Boolean  @default(false)
+  googleCalendarId    String?
+  googleRefreshToken  String?
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@map("user_settings")
+}
