@@ -75,7 +75,7 @@ export default function NewInvoicePage() {
     }
 
     try {
-      const invoice = await createInvoice.mutateAsync({
+      const invoice: any = await createInvoice.mutateAsync({
         clientId: form.clientId,
         dateEcheance: form.dateEcheance,
         conditions: form.conditions || null,

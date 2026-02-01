@@ -61,7 +61,7 @@ export default function NewQuotePage() {
     }
 
     try {
-      const quote = await createQuote.mutateAsync({
+      const quote: any = await createQuote.mutateAsync({
         clientId: form.clientId,
         dateValidite: form.dateValidite,
         conditions: form.conditions || null,
