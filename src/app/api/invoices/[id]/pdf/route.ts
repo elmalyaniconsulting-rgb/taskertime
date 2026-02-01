@@ -84,7 +84,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       conditions: invoice.conditions || undefined,
     });
 
-    return new NextResponse(pdfBytes, {
+    return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
