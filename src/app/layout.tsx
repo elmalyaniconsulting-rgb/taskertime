@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   keywords: ['indépendant', 'freelance', 'facturation', 'devis', 'planning', 'gestion'],
   authors: [{ name: 'Formation Panthéon' }],
   manifest: '/manifest.json',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#0f172a' },
@@ -19,6 +23,11 @@ export const metadata: Metadata = {
     width: 'device-width',
     initialScale: 1,
     maximumScale: 1,
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'TaskerTime',
   },
 };
 
