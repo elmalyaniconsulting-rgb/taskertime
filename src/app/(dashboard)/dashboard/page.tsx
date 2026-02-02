@@ -1,92 +1,69 @@
-import { requireAuth } from '@/lib/session';
-import prisma from '@/lib/prisma';
+'use client';
+
+import { useSession } from 'next-auth/react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Receipt,
   FileText,
   Users,
-  TrendingUp,
   CalendarDays,
   Euro,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { formatCurrency } from '@/lib/utils';
 
-export default async function DashboardPage() {
-  let user: any;
-  let stats = {
-    clientsCount: 0,
-    invoicesCount: 0,
-    quotesCount: 0,
-    caMonth: 0,
-  };
+export default function DashboardPage() {
+  const { data: session, status } = useSession();
+  const [stats, setStats] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  try {
-    user = await requireAuth();
-  } catch (error: any) {
-    // re-throw redirect errors
-    if (error?.digest?.startsWith('NEXT_REDIRECT')) {
-      throw error;
+  useEffect(() => {
+    if (status === 'authenticated') {
+      fetch('/api/dashboard-stats')
+        .then((res) => {
+          if (!res.ok) throw new Error(`API error: ${res.status}`);
+          return res.json();
+        })
+        .then(setStats)
+        .catch((e) => setError(e.message));
     }
+  }, [status]);
+
+  if (status === 'loading') {
     return (
-      <div className="p-8">
-        <h1 className="text-2xl font-bold text-destructive">Erreur d&apos;authentification</h1>
-        <p className="mt-2 text-muted-foreground">Impossible de charger la session. Veuillez vous reconnecter.</p>
-        <pre className="mt-4 p-4 bg-muted rounded text-sm overflow-auto">{String(error?.message || error)}</pre>
-        <Link href="/login" className="mt-4 inline-block text-primary hover:underline">Retour à la connexion</Link>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  try {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-    const [clientsCount, invoicesCount, quotesCount, monthRevenue] = await Promise.all([
-      prisma.client.count({
-        where: { userId: user.id, isArchived: false },
-      }),
-      prisma.invoice.count({
-        where: { userId: user.id },
-      }),
-      prisma.quote.count({
-        where: { userId: user.id },
-      }),
-      prisma.payment.aggregate({
-        where: {
-          invoice: { userId: user.id },
-          datePaiement: {
-            gte: startOfMonth,
-            lte: endOfMonth,
-          },
-        },
-        _sum: { montant: true },
-      }),
-    ]);
-
-    stats = {
-      clientsCount,
-      invoicesCount,
-      quotesCount,
-      caMonth: Number(monthRevenue._sum.montant || 0),
-    };
-  } catch (error: any) {
+  if (status === 'unauthenticated') {
     return (
-      <div className="p-8">
-        <h1 className="text-2xl font-bold text-destructive">Erreur de chargement</h1>
-        <p className="mt-2 text-muted-foreground">Impossible de charger les données du tableau de bord.</p>
-        <pre className="mt-4 p-4 bg-muted rounded text-sm overflow-auto whitespace-pre-wrap">{String(error?.message || error)}</pre>
-        <Link href="/login" className="mt-4 inline-block text-primary hover:underline">Retour à la connexion</Link>
+      <div className="p-8 text-center">
+        <p>Session expirée.</p>
+        <Link href="/login" className="text-primary hover:underline">
+          Se reconnecter
+        </Link>
       </div>
     );
   }
+
+  const user = session?.user;
+  const firstName = user?.name?.split(' ')[0] || 'Utilisateur';
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: 'EUR',
+    }).format(amount);
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">
-          Bonjour {user.firstName} !
+          Bonjour {firstName} !
         </h1>
         <p className="text-muted-foreground">
           Voici un résumé de votre activité
@@ -100,7 +77,9 @@ export default async function DashboardPage() {
             <Euro className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.caMonth)}</div>
+            <div className="text-2xl font-bold">
+              {stats ? formatCurrency(stats.caMonth || 0) : '...'}
+            </div>
           </CardContent>
         </Card>
 
@@ -110,7 +89,9 @@ export default async function DashboardPage() {
             <Receipt className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.invoicesCount}</div>
+            <div className="text-2xl font-bold">
+              {stats ? stats.invoicesCount || 0 : '...'}
+            </div>
           </CardContent>
         </Card>
 
@@ -120,7 +101,9 @@ export default async function DashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.clientsCount}</div>
+            <div className="text-2xl font-bold">
+              {stats ? stats.clientsCount || 0 : '...'}
+            </div>
           </CardContent>
         </Card>
 
@@ -130,10 +113,20 @@ export default async function DashboardPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.quotesCount}</div>
+            <div className="text-2xl font-bold">
+              {stats ? stats.quotesCount || 0 : '...'}
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {error && (
+        <Card className="border-destructive/50">
+          <CardContent className="pt-6">
+            <p className="text-sm text-destructive">Erreur chargement stats: {error}</p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
@@ -151,7 +144,7 @@ export default async function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
               Actions rapides
