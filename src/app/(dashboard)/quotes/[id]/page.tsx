@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuote, useUpdateQuote, useConvertQuote } from '@/hooks/use-api';
 import { PageHeader, StatusBadge, Currency } from '@/components/shared';
@@ -9,10 +10,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft, Send, CheckCircle, XCircle, ArrowRightLeft,
-  FileDown, Printer, Mail,
+  FileDown, Mail, Loader2,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
@@ -20,9 +24,13 @@ export default function QuoteDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const { data: quote, isLoading } = useQuote(params.id as string);
+  const { data: quote, isLoading, refetch } = useQuote(params.id as string);
   const updateQuote = useUpdateQuote();
   const convertQuote = useConvertQuote();
+
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [emailMessage, setEmailMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   if (isLoading) {
     return (
@@ -46,6 +54,7 @@ export default function QuoteDetailPage() {
     try {
       await updateQuote.mutateAsync({ id: quote.id, data: { statut } });
       toast({ title: 'Statut mis à jour', variant: 'success' });
+      refetch();
     } catch (err: any) {
       toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
     }
@@ -61,7 +70,41 @@ export default function QuoteDetailPage() {
     }
   };
 
+  const handleDownloadPdf = () => {
+    window.open(`/api/quotes/${quote.id}/pdf`, '_blank');
+  };
+
+  const handleSendEmail = async () => {
+    setIsSending(true);
+    try {
+      const res = await fetch(`/api/quotes/${quote.id}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: emailMessage }),
+      });
+      const data = await res.json();
+
+      if (data.fallback === 'mailto') {
+        // No Resend configured, open mailto
+        const mailtoUrl = `mailto:${data.to}?subject=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`;
+        window.open(mailtoUrl, '_blank');
+        toast({ title: 'Client mail ouvert', description: 'Resend non configuré, ouverture du client mail.' });
+      } else if (res.ok) {
+        toast({ title: 'Email envoyé', description: `Devis envoyé à ${quote.client.email}`, variant: 'success' });
+        refetch();
+      } else {
+        throw new Error(data.error || 'Erreur envoi');
+      }
+    } catch (err: any) {
+      toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
+    }
+    setIsSending(false);
+    setShowEmailDialog(false);
+    setEmailMessage('');
+  };
+
   const clientName = quote.client.raisonSociale || `${quote.client.prenom || ''} ${quote.client.nom}`;
+  const hasTva = Number(quote.totalTVA) > 0;
 
   return (
     <div className="space-y-6">
@@ -79,8 +122,8 @@ export default function QuoteDetailPage() {
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
         {quote.statut === 'BROUILLON' && (
-          <Button variant="outline" onClick={() => handleStatus('ENVOYE')}>
-            <Send className="h-4 w-4 mr-2" />Marquer envoyé
+          <Button variant="outline" onClick={() => setShowEmailDialog(true)}>
+            <Mail className="h-4 w-4 mr-2" />Envoyer au client
           </Button>
         )}
         {['ENVOYE', 'VU'].includes(quote.statut) && (
@@ -91,6 +134,9 @@ export default function QuoteDetailPage() {
             <Button variant="destructive" onClick={() => handleStatus('REFUSE')}>
               <XCircle className="h-4 w-4 mr-2" />Refuser
             </Button>
+            <Button variant="outline" onClick={() => setShowEmailDialog(true)}>
+              <Mail className="h-4 w-4 mr-2" />Renvoyer
+            </Button>
           </>
         )}
         {quote.statut === 'ACCEPTE' && !quote.invoiceId && (
@@ -98,13 +144,13 @@ export default function QuoteDetailPage() {
             <ArrowRightLeft className="h-4 w-4 mr-2" />Convertir en facture
           </Button>
         )}
-        <Button variant="outline" onClick={() => window.print()}>
-          <Printer className="h-4 w-4 mr-2" />Imprimer
+        <Button variant="outline" onClick={handleDownloadPdf}>
+          <FileDown className="h-4 w-4 mr-2" />Télécharger PDF
         </Button>
       </div>
 
       {/* Quote preview */}
-      <Card className="print:shadow-none print:border-none">
+      <Card>
         <CardContent className="p-6 md:p-8 space-y-6">
           {/* Header */}
           <div className="flex flex-col md:flex-row justify-between gap-6">
@@ -112,10 +158,10 @@ export default function QuoteDetailPage() {
               <h2 className="text-2xl font-bold">DEVIS</h2>
               <p className="text-lg font-semibold text-primary">{quote.numero}</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Date d'émission : {formatDate(quote.dateEmission)}
+                Date d&apos;émission : {formatDate(quote.dateEmission)}
               </p>
               <p className="text-sm text-muted-foreground">
-                Valide jusqu'au : {formatDate(quote.dateValidite)}
+                Valide jusqu&apos;au : {formatDate(quote.dateValidite)}
               </p>
             </div>
             <div className="text-right">
@@ -141,7 +187,7 @@ export default function QuoteDetailPage() {
                 <TableHead className="text-right">Qté</TableHead>
                 <TableHead>Unité</TableHead>
                 <TableHead className="text-right">PU HT</TableHead>
-                {Number(quote.totalTVA) > 0 && <TableHead className="text-right">TVA</TableHead>}
+                {hasTva && <TableHead className="text-right">TVA</TableHead>}
                 <TableHead className="text-right">Total HT</TableHead>
               </TableRow>
             </TableHeader>
@@ -159,7 +205,7 @@ export default function QuoteDetailPage() {
                   <TableCell className="text-right">
                     <Currency amount={Number(line.prixUnitaire)} />
                   </TableCell>
-                  {Number(quote.totalTVA) > 0 && (
+                  {hasTva && (
                     <TableCell className="text-right">{Number(line.tauxTva)}%</TableCell>
                   )}
                   <TableCell className="text-right font-medium">
@@ -177,7 +223,7 @@ export default function QuoteDetailPage() {
                 <span>Total HT</span>
                 <Currency amount={Number(quote.totalHT)} className="font-medium" />
               </div>
-              {Number(quote.totalTVA) > 0 && (
+              {hasTva && (
                 <div className="flex justify-between text-sm">
                   <span>TVA</span>
                   <Currency amount={Number(quote.totalTVA)} />
@@ -209,6 +255,40 @@ export default function QuoteDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Email Dialog */}
+      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Envoyer le devis par email</DialogTitle>
+            <DialogDescription>
+              Le devis sera envoyé à <strong>{quote.client.email}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Message personnalisé (optionnel)</Label>
+              <Textarea
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                rows={4}
+                placeholder="Ajoutez un message pour votre client..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEmailDialog(false)}>Annuler</Button>
+            <Button onClick={handleSendEmail} disabled={isSending}>
+              {isSending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Envoyer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

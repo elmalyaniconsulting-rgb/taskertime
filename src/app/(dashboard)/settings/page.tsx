@@ -15,8 +15,8 @@ import { Loader2, Save, User, Building, CreditCard, Bell } from 'lucide-react';
 
 export default function SettingsPage() {
   const { toast } = useToast();
-  const { data: session } = useSession();
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(true);
   const [profile, setProfile] = useState({
     firstName: '', lastName: '', phone: '', activite: '',
     siret: '', siren: '', tvaIntracom: '', rcs: '',
@@ -24,31 +24,110 @@ export default function SettingsPage() {
     adresseRue: '', adresseCP: '', adresseVille: '',
     tauxHoraireDefaut: '', tvaApplicable: false, tauxTva: '20',
     mentionTvaExo: 'TVA non applicable, art. 293 B du CGI',
-    prefixeFacture: 'FA', prefixeDevis: 'DE',
+    prefixeFacture: 'F', prefixeDevis: 'D',
     iban: '', bic: '', banque: '',
     numeroNda: '', certifQualiopi: false,
   });
 
+  // Load settings from API
   useEffect(() => {
-    fetch('/api/auth/session').then(async (res) => {
-      // Charger le profil complet depuis une API dédiée si nécessaire
-    });
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((data) => {
+        setProfile({
+          firstName: data.firstName || '',
+          lastName: data.lastName || '',
+          phone: data.phone || '',
+          activite: data.activite || '',
+          siret: data.siret || '',
+          siren: data.siren || '',
+          tvaIntracom: data.tvaIntracom || '',
+          rcs: data.rcs || '',
+          capitalSocial: data.capitalSocial ? String(data.capitalSocial) : '',
+          formeJuridique: data.formeJuridique || '',
+          adresseRue: data.adresseRue || '',
+          adresseCP: data.adresseCP || '',
+          adresseVille: data.adresseVille || '',
+          tauxHoraireDefaut: data.tauxHoraireDefaut ? String(data.tauxHoraireDefaut) : '',
+          tvaApplicable: data.tvaApplicable || false,
+          tauxTva: data.tauxTva ? String(data.tauxTva) : '20',
+          mentionTvaExo: data.mentionTvaExo || 'TVA non applicable, art. 293 B du CGI',
+          prefixeFacture: data.prefixeFacture || 'F',
+          prefixeDevis: data.prefixeDevis || 'D',
+          iban: data.iban || '',
+          bic: data.bic || '',
+          banque: data.banque || '',
+          numeroNda: data.numeroNda || '',
+          certifQualiopi: data.certifQualiopi || false,
+        });
+      })
+      .catch(() => {})
+      .finally(() => setIsFetching(false));
   }, []);
 
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      // API PUT /api/settings/profile à créer si besoin
-      toast({ title: 'Profil sauvegardé', variant: 'success' });
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          phone: profile.phone || null,
+          activite: profile.activite || null,
+          siret: profile.siret || null,
+          siren: profile.siren || null,
+          tvaIntracom: profile.tvaIntracom || null,
+          rcs: profile.rcs || null,
+          capitalSocial: profile.capitalSocial ? parseFloat(profile.capitalSocial) : null,
+          formeJuridique: profile.formeJuridique || null,
+          adresseRue: profile.adresseRue || null,
+          adresseCP: profile.adresseCP || null,
+          adresseVille: profile.adresseVille || null,
+          tauxHoraireDefaut: profile.tauxHoraireDefaut ? parseFloat(profile.tauxHoraireDefaut) : 0,
+          tvaApplicable: profile.tvaApplicable,
+          tauxTva: profile.tauxTva ? parseFloat(profile.tauxTva) : 20,
+          mentionTvaExo: profile.mentionTvaExo || null,
+          prefixeFacture: profile.prefixeFacture,
+          prefixeDevis: profile.prefixeDevis,
+          iban: profile.iban || null,
+          bic: profile.bic || null,
+          banque: profile.banque || null,
+          numeroNda: profile.numeroNda || null,
+          certifQualiopi: profile.certifQualiopi,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erreur serveur');
+      }
+
+      toast({ title: 'Paramètres sauvegardés', variant: 'success' });
     } catch (err: any) {
       toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
     }
     setIsLoading(false);
   };
 
+  if (isFetching) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Paramètres" />
+      <div className="flex items-center justify-between">
+        <PageHeader title="Paramètres" />
+        <Button onClick={handleSave} disabled={isLoading}>
+          {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+          Sauvegarder
+        </Button>
+      </div>
 
       <Tabs defaultValue="profile">
         <TabsList>
@@ -80,7 +159,29 @@ export default function SettingsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Activité</Label>
-                <Input value={profile.activite} onChange={(e) => setProfile({ ...profile, activite: e.target.value })} />
+                <Input value={profile.activite} onChange={(e) => setProfile({ ...profile, activite: e.target.value })} placeholder="Formateur, Consultant, Coach..." />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Adresse professionnelle</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Rue</Label>
+                <Input value={profile.adresseRue} onChange={(e) => setProfile({ ...profile, adresseRue: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Code postal</Label>
+                  <Input value={profile.adresseCP} onChange={(e) => setProfile({ ...profile, adresseCP: e.target.value })} />
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Ville</Label>
+                  <Input value={profile.adresseVille} onChange={(e) => setProfile({ ...profile, adresseVille: e.target.value })} />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -89,57 +190,47 @@ export default function SettingsPage() {
         <TabsContent value="business" className="mt-6 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Informations légales</CardTitle>
-              <CardDescription>Données affichées sur vos factures et devis</CardDescription>
+              <CardTitle>Identité juridique</CardTitle>
+              <CardDescription>Informations légales obligatoires sur vos factures</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Forme juridique</Label>
+                <Input value={profile.formeJuridique} onChange={(e) => setProfile({ ...profile, formeJuridique: e.target.value })} placeholder="SASU, EURL, EI, Micro-entreprise..." />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>SIRET</Label>
-                  <Input value={profile.siret} onChange={(e) => setProfile({ ...profile, siret: e.target.value })} />
+                  <Input value={profile.siret} onChange={(e) => setProfile({ ...profile, siret: e.target.value })} placeholder="14 chiffres" />
                 </div>
                 <div className="space-y-2">
                   <Label>SIREN</Label>
-                  <Input value={profile.siren} onChange={(e) => setProfile({ ...profile, siren: e.target.value })} />
+                  <Input value={profile.siren} onChange={(e) => setProfile({ ...profile, siren: e.target.value })} placeholder="9 chiffres" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>N° TVA intracommunautaire</Label>
-                  <Input value={profile.tvaIntracom} onChange={(e) => setProfile({ ...profile, tvaIntracom: e.target.value })} />
+                  <Input value={profile.tvaIntracom} onChange={(e) => setProfile({ ...profile, tvaIntracom: e.target.value })} placeholder="FR + 11 chiffres" />
                 </div>
                 <div className="space-y-2">
                   <Label>RCS</Label>
-                  <Input value={profile.rcs} onChange={(e) => setProfile({ ...profile, rcs: e.target.value })} />
+                  <Input value={profile.rcs} onChange={(e) => setProfile({ ...profile, rcs: e.target.value })} placeholder="Paris B 123 456 789" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Forme juridique</Label>
-                  <Input value={profile.formeJuridique} onChange={(e) => setProfile({ ...profile, formeJuridique: e.target.value })} placeholder="SASU, EI, EURL..." />
+                  <Label>Capital social (€)</Label>
+                  <Input type="number" value={profile.capitalSocial} onChange={(e) => setProfile({ ...profile, capitalSocial: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Capital social</Label>
-                  <Input value={profile.capitalSocial} onChange={(e) => setProfile({ ...profile, capitalSocial: e.target.value })} />
+                  <Label>N° NDA (formateur)</Label>
+                  <Input value={profile.numeroNda} onChange={(e) => setProfile({ ...profile, numeroNda: e.target.value })} placeholder="11 chiffres" />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Adresse</Label>
-                <Input placeholder="Rue" value={profile.adresseRue} onChange={(e) => setProfile({ ...profile, adresseRue: e.target.value })} />
-                <div className="grid grid-cols-3 gap-2">
-                  <Input placeholder="CP" value={profile.adresseCP} onChange={(e) => setProfile({ ...profile, adresseCP: e.target.value })} />
-                  <Input placeholder="Ville" className="col-span-2" value={profile.adresseVille} onChange={(e) => setProfile({ ...profile, adresseVille: e.target.value })} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>N° Déclaration d'activité (NDA)</Label>
-                  <Input value={profile.numeroNda} onChange={(e) => setProfile({ ...profile, numeroNda: e.target.value })} />
-                </div>
-                <div className="flex items-center gap-2 pt-6">
-                  <Switch checked={profile.certifQualiopi} onCheckedChange={(v) => setProfile({ ...profile, certifQualiopi: v })} />
-                  <Label>Certifié Qualiopi</Label>
-                </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={profile.certifQualiopi} onCheckedChange={(v) => setProfile({ ...profile, certifQualiopi: v })} />
+                <Label>Certifié Qualiopi</Label>
               </div>
             </CardContent>
           </Card>
@@ -149,6 +240,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>TVA & Facturation</CardTitle>
+              <CardDescription>Ces paramètres s&apos;appliquent à tous vos devis et factures</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-2">
@@ -162,7 +254,7 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <Label>Mention exonération TVA</Label>
+                  <Label>Mention d&apos;exonération TVA</Label>
                   <Textarea value={profile.mentionTvaExo} onChange={(e) => setProfile({ ...profile, mentionTvaExo: e.target.value })} rows={2} />
                 </div>
               )}
@@ -186,12 +278,12 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Coordonnées bancaires</CardTitle>
-              <CardDescription>Affichées sur vos factures pour le virement</CardDescription>
+              <CardDescription>Affichées sur vos factures pour les virements</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>IBAN</Label>
-                <Input value={profile.iban} onChange={(e) => setProfile({ ...profile, iban: e.target.value })} />
+                <Input value={profile.iban} onChange={(e) => setProfile({ ...profile, iban: e.target.value })} placeholder="FR76 xxxx xxxx xxxx xxxx xxxx xxx" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -211,47 +303,16 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Notifications</CardTitle>
+              <CardDescription>Bientôt disponible — Configuration des relances automatiques et rappels</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm">Relances automatiques</p>
-                  <p className="text-xs text-muted-foreground">Relancer les factures impayées à J+1, J+7, J+15, J+30</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm">Rappels de RDV</p>
-                  <p className="text-xs text-muted-foreground">Email au client 24h avant le RDV</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm">Notifications email</p>
-                  <p className="text-xs text-muted-foreground">Recevoir les notifications par email</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm">Notifications push</p>
-                  <p className="text-xs text-muted-foreground">Recevoir les notifications push (PWA)</p>
-                </div>
-                <Switch />
-              </div>
+            <CardContent>
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Les paramètres de notifications seront disponibles dans une prochaine version.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-
-      <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={isLoading}>
-          {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-          Sauvegarder
-        </Button>
-      </div>
     </div>
   );
 }
