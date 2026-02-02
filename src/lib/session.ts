@@ -54,11 +54,20 @@ export async function getCurrentUser() {
 }
 
 export async function requireAuth() {
-  const user = await getCurrentUser();
-  
-  if (!user) {
+  try {
+    const user = await getCurrentUser();
+    
+    if (!user) {
+      redirect('/login');
+    }
+
+    return user;
+  } catch (error: any) {
+    // redirect() throws a NEXT_REDIRECT error which we need to re-throw
+    if (error?.digest?.startsWith('NEXT_REDIRECT')) {
+      throw error;
+    }
+    console.error('Auth error:', error);
     redirect('/login');
   }
-
-  return user;
 }
