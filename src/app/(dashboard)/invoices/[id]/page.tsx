@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useInvoice, useUpdateInvoice } from '@/hooks/use-api';
 import { PageHeader, StatusBadge, Currency } from '@/components/shared';
@@ -10,16 +11,23 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Send, Printer, AlertTriangle, CheckCircle, CreditCard } from 'lucide-react';
+import { ArrowLeft, Send, AlertTriangle, FileDown, Mail, CreditCard, Loader2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 export default function InvoiceDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const { data: invoice, isLoading } = useInvoice(params.id as string);
+  const { data: invoice, isLoading, refetch } = useInvoice(params.id as string);
   const updateInvoice = useUpdateInvoice();
+
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [emailMessage, setEmailMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   if (isLoading) {
     return (
@@ -43,9 +51,43 @@ export default function InvoiceDetailPage() {
     try {
       await updateInvoice.mutateAsync({ id: invoice.id, data: { statut } });
       toast({ title: 'Statut mis à jour', variant: 'success' });
+      refetch();
     } catch (err: any) {
       toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
     }
+  };
+
+  const handleDownloadPdf = () => {
+    window.open(`/api/invoices/${invoice.id}/pdf`, '_blank');
+  };
+
+  const handleSendEmail = async () => {
+    setIsSending(true);
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: emailMessage }),
+      });
+      const data = await res.json();
+
+      if (data.fallback === 'mailto') {
+        const mailtoUrl = `mailto:${data.to}?subject=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`;
+        window.open(mailtoUrl, '_blank');
+        toast({ title: 'Client mail ouvert', description: 'Envoyez la facture via votre client mail.' });
+        refetch();
+      } else if (res.ok) {
+        toast({ title: 'Email envoyé', variant: 'success' });
+        refetch();
+      } else {
+        throw new Error(data.error || 'Erreur envoi');
+      }
+    } catch (err: any) {
+      toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
+    }
+    setIsSending(false);
+    setShowEmailDialog(false);
+    setEmailMessage('');
   };
 
   const clientName = invoice.client.raisonSociale || `${invoice.client.prenom || ''} ${invoice.client.nom}`;
@@ -54,6 +96,7 @@ export default function InvoiceDetailPage() {
   const resteAPayer = Number(invoice.resteAPayer);
   const pctPaid = totalTTC > 0 ? (montantPaye / totalTTC) * 100 : 0;
   const isOverdue = !['PAYEE', 'ANNULEE', 'AVOIR'].includes(invoice.statut) && new Date(invoice.dateEcheance) < new Date();
+  const hasTva = Number(invoice.totalTVA) > 0;
 
   return (
     <div className="space-y-6">
@@ -98,31 +141,33 @@ export default function InvoiceDetailPage() {
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
         {invoice.statut === 'BROUILLON' && (
-          <Button variant="outline" onClick={() => handleStatus('ENVOYEE')}>
-            <Send className="h-4 w-4 mr-2" />Marquer envoyée
+          <Button variant="outline" onClick={() => setShowEmailDialog(true)}>
+            <Mail className="h-4 w-4 mr-2" />Envoyer au client
           </Button>
         )}
-        <Button variant="outline" onClick={() => window.print()}>
-          <Printer className="h-4 w-4 mr-2" />Imprimer
+        {['ENVOYEE', 'VUE'].includes(invoice.statut) && (
+          <Button variant="outline" onClick={() => setShowEmailDialog(true)}>
+            <Mail className="h-4 w-4 mr-2" />Renvoyer
+          </Button>
+        )}
+        <Button variant="outline" onClick={handleDownloadPdf}>
+          <FileDown className="h-4 w-4 mr-2" />Télécharger PDF
         </Button>
       </div>
 
       {/* Invoice preview */}
-      <Card className="print:shadow-none print:border-none">
+      <Card>
         <CardContent className="p-6 md:p-8 space-y-6">
           <div className="flex flex-col md:flex-row justify-between gap-6">
             <div>
               <h2 className="text-2xl font-bold">FACTURE</h2>
               <p className="text-lg font-semibold text-primary">{invoice.numero}</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Date d'émission : {formatDate(invoice.dateEmission)}
+                Date d&apos;émission : {formatDate(invoice.dateEmission)}
               </p>
               <p className="text-sm text-muted-foreground">
                 Échéance : {formatDate(invoice.dateEcheance)}
               </p>
-              {invoice.isChorusPro && (
-                <Badge variant="outline" className="mt-2">Chorus Pro</Badge>
-              )}
             </div>
             <div className="text-right">
               <p className="font-semibold">{clientName}</p>
@@ -131,9 +176,6 @@ export default function InvoiceDetailPage() {
                 <p className="text-sm">{invoice.client.adresseCP} {invoice.client.adresseVille}</p>
               )}
               <p className="text-sm text-muted-foreground">{invoice.client.email}</p>
-              {invoice.client.siret && (
-                <p className="text-xs text-muted-foreground mt-1">SIRET : {invoice.client.siret}</p>
-              )}
             </div>
           </div>
 
@@ -146,22 +188,18 @@ export default function InvoiceDetailPage() {
                 <TableHead className="text-right">Qté</TableHead>
                 <TableHead>Unité</TableHead>
                 <TableHead className="text-right">PU HT</TableHead>
-                {Number(invoice.totalTVA) > 0 && <TableHead className="text-right">TVA</TableHead>}
+                {hasTva && <TableHead className="text-right">TVA</TableHead>}
                 <TableHead className="text-right">Total HT</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {invoice.lines.map((line: any) => (
                 <TableRow key={line.id}>
-                  <TableCell>
-                    <p className="font-medium text-sm">{line.description}</p>
-                  </TableCell>
+                  <TableCell><p className="font-medium text-sm">{line.description}</p></TableCell>
                   <TableCell className="text-right">{Number(line.quantite)}</TableCell>
                   <TableCell>{line.unite}</TableCell>
                   <TableCell className="text-right"><Currency amount={Number(line.prixUnitaire)} /></TableCell>
-                  {Number(invoice.totalTVA) > 0 && (
-                    <TableCell className="text-right">{Number(line.tauxTva)}%</TableCell>
-                  )}
+                  {hasTva && <TableCell className="text-right">{Number(line.tauxTva)}%</TableCell>}
                   <TableCell className="text-right font-medium"><Currency amount={Number(line.totalHT)} /></TableCell>
                 </TableRow>
               ))}
@@ -174,7 +212,7 @@ export default function InvoiceDetailPage() {
                 <span>Total HT</span>
                 <Currency amount={Number(invoice.totalHT)} className="font-medium" />
               </div>
-              {Number(invoice.totalTVA) > 0 && (
+              {hasTva && (
                 <div className="flex justify-between text-sm">
                   <span>TVA</span>
                   <Currency amount={Number(invoice.totalTVA)} />
@@ -188,15 +226,11 @@ export default function InvoiceDetailPage() {
             </div>
           </div>
 
-          {/* Mentions */}
           {invoice.mentionsLegales && (
             <>
               <Separator />
               <p className="text-xs text-muted-foreground">{invoice.mentionsLegales}</p>
             </>
-          )}
-          {invoice.conditions && (
-            <p className="text-xs text-muted-foreground">{invoice.conditions}</p>
           )}
         </CardContent>
       </Card>
@@ -236,6 +270,36 @@ export default function InvoiceDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Email Dialog */}
+      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Envoyer la facture par email</DialogTitle>
+            <DialogDescription>
+              La facture sera envoyée à <strong>{invoice.client.email}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Message personnalisé (optionnel)</Label>
+              <Textarea
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                rows={4}
+                placeholder="Ajoutez un message pour votre client..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEmailDialog(false)}>Annuler</Button>
+            <Button onClick={handleSendEmail} disabled={isSending}>
+              {isSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              Envoyer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
