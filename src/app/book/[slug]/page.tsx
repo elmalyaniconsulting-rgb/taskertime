@@ -7,152 +7,188 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Check, Loader2, User } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { Calendar, Clock, MapPin, User, Loader2, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+
+interface Slot {
+  id: string;
+  dateDebut: string;
+  dateFin: string;
+}
 
 interface BookingData {
-  link: any;
-  pro: any;
-  busy: { dateDebut: string; dateFin: string }[];
+  id: string;
+  nom: string;
+  description?: string;
+  dureeMinutes: number;
+  lieu?: string;
+  pro: {
+    nom: string;
+    activite?: string;
+  };
+  slots: Slot[];
 }
 
 export default function PublicBookingPage() {
   const params = useParams();
-  const slug = params.slug as string;
-
   const [data, setData] = useState<BookingData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [step, setStep] = useState<'date' | 'time' | 'form' | 'done'>('date');
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [form, setForm] = useState({
-    nom: '', prenom: '', email: '', telephone: '', entreprise: '', message: '',
+    nom: '',
+    prenom: '',
+    email: '',
+    telephone: '',
+    message: '',
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [bookedSlot, setBookedSlot] = useState<{ dateDebut: string } | null>(null);
+
+  // Pagination for dates
+  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
   });
 
   useEffect(() => {
-    fetch(`/api/bookings/public?slug=${slug}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) setError(d.error);
-        else setData(d);
-      })
-      .catch(() => setError('Impossible de charger la page'))
-      .finally(() => setLoading(false));
-  }, [slug]);
-
-  // Generate available time slots for selected date
-  const timeSlots = useMemo(() => {
-    if (!selectedDate || !data) return [];
-
-    const slots: string[] = [];
-    const duration = data.link.dureeMinutes;
-    const buffer = data.link.bufferApres || 0;
-    const dateStr = selectedDate.toISOString().split('T')[0];
-
-    // Default 9h-18h if no custom availability
-    for (let h = 9; h < 18; h++) {
-      for (let m = 0; m < 60; m += 30) {
-        const startTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-        const start = new Date(`${dateStr}T${startTime}:00`);
-        const end = new Date(start.getTime() + (duration + buffer) * 60000);
-
-        if (end.getHours() > 18 || (end.getHours() === 18 && end.getMinutes() > 0)) continue;
-
-        // Check conflicts with busy slots
-        const hasConflict = data.busy.some((b) => {
-          const bStart = new Date(b.dateDebut);
-          const bEnd = new Date(b.dateFin);
-          return start < bEnd && end > bStart;
-        });
-
-        // Check min delay
-        const minDelay = data.link.delaiMinReservation || 24;
-        const minTime = new Date(Date.now() + minDelay * 3600000);
-        if (start < minTime) continue;
-
-        if (!hasConflict) slots.push(startTime);
+    const fetchData = async () => {
+      try {
+        const res = await fetch(`/api/book/${params.slug}`);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Lien invalide');
+        }
+        const json = await res.json();
+        setData(json);
+      } catch (err: any) {
+        setError(err.message);
       }
-    }
+      setIsLoading(false);
+    };
+    fetchData();
+  }, [params.slug]);
 
-    return slots;
-  }, [selectedDate, data]);
+  // Group slots by day
+  const slotsByDay = useMemo(() => {
+    if (!data) return {};
+    const map: Record<string, Slot[]> = {};
+    data.slots.forEach((slot) => {
+      const day = new Date(slot.dateDebut).toISOString().split('T')[0];
+      if (!map[day]) map[day] = [];
+      map[day].push(slot);
+    });
+    // Sort slots within each day
+    Object.keys(map).forEach((day) => {
+      map[day].sort((a, b) => new Date(a.dateDebut).getTime() - new Date(b.dateDebut).getTime());
+    });
+    return map;
+  }, [data]);
+
+  // Get days for current week view
+  const weekDays = useMemo(() => {
+    const days: Date[] = [];
+    const d = new Date(currentWeekStart);
+    for (let i = 0; i < 7; i++) {
+      days.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
+    return days;
+  }, [currentWeekStart]);
+
+  const navigateWeek = (delta: number) => {
+    const d = new Date(currentWeekStart);
+    d.setDate(d.getDate() + delta * 7);
+    setCurrentWeekStart(d);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDate || !selectedSlot || !data) return;
+    if (!selectedSlot) return;
 
-    setSubmitting(true);
-    const dateStr = selectedDate.toISOString().split('T')[0];
-    const dateDebut = new Date(`${dateStr}T${selectedSlot}:00`);
-    const dateFin = new Date(dateDebut.getTime() + data.link.dureeMinutes * 60000);
-
+    setIsSubmitting(true);
     try {
-      const res = await fetch('/api/bookings/public', {
+      const res = await fetch(`/api/book/${params.slug}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          slug,
-          dateDebut: dateDebut.toISOString(),
-          dateFin: dateFin.toISOString(),
-          ...form,
+          slotId: selectedSlot.id,
+          nom: form.nom,
+          prenom: form.prenom,
+          email: form.email,
+          telephone: form.telephone || null,
+          message: form.message || null,
         }),
       });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error);
+      }
+
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error);
-      setStep('done');
+      setBookedSlot({ dateDebut: selectedSlot.dateDebut });
+      setIsSuccess(true);
     } catch (err: any) {
       setError(err.message);
-    } finally {
-      setSubmitting(false);
     }
+    setIsSubmitting(false);
   };
 
-  // Calendar
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay = new Date(year, month, 1).getDay();
-  const startDay = firstDay === 0 ? 6 : firstDay - 1;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const calendarDays = useMemo(() => {
-    const days: (number | null)[] = [];
-    for (let i = 0; i < startDay; i++) days.push(null);
-    for (let i = 1; i <= daysInMonth; i++) days.push(i);
-    while (days.length % 7 !== 0) days.push(null);
-    return days;
-  }, [startDay, daysInMonth]);
-
-  const maxDate = data ? new Date(Date.now() + (data.link.delaiMaxReservation || 30) * 86400000) : new Date();
-
-  const isDayAvailable = (day: number) => {
-    const d = new Date(year, month, day);
-    d.setHours(0, 0, 0, 0);
-    if (d < today) return false;
-    if (d > maxDate) return false;
-    if (d.getDay() === 0 || d.getDay() === 6) return false; // Weekend
-    return true;
-  };
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
+        <div className="max-w-2xl mx-auto pt-8">
+          <Skeleton className="h-12 w-48 mb-4" />
+          <Skeleton className="h-64" />
+        </div>
       </div>
     );
   }
 
-  if (error && !data) {
+  if (error && !isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <Card className="max-w-md">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
           <CardContent className="pt-6 text-center">
-            <p className="text-destructive">{error}</p>
+            <div className="text-4xl mb-4">😕</div>
+            <h2 className="text-xl font-semibold mb-2">Oups !</h2>
+            <p className="text-muted-foreground">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isSuccess && bookedSlot) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-green-900 dark:to-emerald-800 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="pt-6 text-center">
+            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="h-8 w-8 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">Réservation envoyée !</h2>
+            <p className="text-muted-foreground mb-4">
+              Votre demande de réservation a été envoyée à {data?.pro.nom}.<br />
+              Vous recevrez une confirmation par email.
+            </p>
+            <div className="bg-muted rounded-lg p-4 text-left">
+              <p className="font-semibold">{data?.nom}</p>
+              <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                <Calendar className="h-4 w-4" />
+                {new Date(bookedSlot.dateDebut).toLocaleDateString('fr-FR', {
+                  weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+                })}
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -162,201 +198,179 @@ export default function PublicBookingPage() {
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-8">
-      <div className="max-w-2xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
+      <div className="max-w-3xl mx-auto pt-8 pb-16">
         {/* Header */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold">{data.pro.firstName} {data.pro.lastName}</h1>
-                {data.pro.activite && <p className="text-sm text-muted-foreground">{data.pro.activite}</p>}
-              </div>
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <User className="h-8 w-8 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold">{data.pro.nom}</h1>
+          {data.pro.activite && (
+            <p className="text-muted-foreground">{data.pro.activite}</p>
+          )}
+        </div>
+
+        {/* Booking card */}
+        <Card className="shadow-xl">
+          <CardHeader>
+            <CardTitle>{data.nom}</CardTitle>
+            {data.description && (
+              <CardDescription>{data.description}</CardDescription>
+            )}
+            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
+              <span className="flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                {data.dureeMinutes} min
+              </span>
+              {data.lieu && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-4 w-4" />
+                  {data.lieu}
+                </span>
+              )}
             </div>
-            <div className="mt-4" style={{ borderLeft: `3px solid ${data.link.couleur}`, paddingLeft: 12 }}>
-              <h2 className="font-semibold">{data.link.nom}</h2>
-              {data.link.description && <p className="text-sm text-muted-foreground mt-1">{data.link.description}</p>}
-              <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{data.link.dureeMinutes} min</span>
-                {data.link.afficherTarif && data.link.tarifAffiche && (
-                  <span>{Number(data.link.tarifAffiche).toFixed(0)} €</span>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Slot selection */}
+              <div className="space-y-3">
+                <Label className="text-base font-semibold">Choisissez un créneau</Label>
+                
+                {/* Week navigation */}
+                <div className="flex items-center justify-between">
+                  <Button type="button" variant="outline" size="sm" onClick={() => navigateWeek(-1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm font-medium">
+                    {currentWeekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                    {' — '}
+                    {new Date(currentWeekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => navigateWeek(1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Slots grid by day */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {weekDays.map((day) => {
+                    const dayStr = day.toISOString().split('T')[0];
+                    const daySlots = slotsByDay[dayStr] || [];
+                    const isToday = new Date().toISOString().split('T')[0] === dayStr;
+
+                    return (
+                      <div key={dayStr} className="space-y-2">
+                        <div className={cn(
+                          'text-center text-sm font-medium py-1 rounded',
+                          isToday && 'bg-primary/10 text-primary'
+                        )}>
+                          {day.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}
+                        </div>
+                        {daySlots.length === 0 ? (
+                          <div className="text-xs text-muted-foreground text-center py-2">—</div>
+                        ) : (
+                          <div className="space-y-1">
+                            {daySlots.map((slot) => {
+                              const time = new Date(slot.dateDebut).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                              const isSelected = selectedSlot?.id === slot.id;
+                              return (
+                                <Button
+                                  key={slot.id}
+                                  type="button"
+                                  variant={isSelected ? 'default' : 'outline'}
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={() => setSelectedSlot(slot)}
+                                >
+                                  {time}
+                                </Button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {data.slots.length === 0 && (
+                  <p className="text-center text-muted-foreground py-4">
+                    Aucun créneau disponible pour le moment.
+                  </p>
                 )}
               </div>
-            </div>
+
+              {/* Contact form */}
+              {selectedSlot && (
+                <div className="space-y-4 pt-4 border-t">
+                  <Label className="text-base font-semibold">Vos informations</Label>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Prénom *</Label>
+                      <Input
+                        value={form.prenom}
+                        onChange={(e) => setForm({ ...form, prenom: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Nom *</Label>
+                      <Input
+                        value={form.nom}
+                        onChange={(e) => setForm({ ...form, nom: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Email *</Label>
+                    <Input
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Téléphone</Label>
+                    <Input
+                      type="tel"
+                      value={form.telephone}
+                      onChange={(e) => setForm({ ...form, telephone: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Message (optionnel)</Label>
+                    <Textarea
+                      value={form.message}
+                      onChange={(e) => setForm({ ...form, message: e.target.value })}
+                      rows={2}
+                      placeholder="Précisions sur votre demande..."
+                    />
+                  </div>
+
+                  <Button type="submit" className="w-full h-12 text-lg" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      'Confirmer la réservation'
+                    )}
+                  </Button>
+                </div>
+              )}
+            </form>
           </CardContent>
         </Card>
 
-        {step === 'done' ? (
-          <Card>
-            <CardContent className="py-12 text-center space-y-4">
-              <div className="mx-auto h-16 w-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                <Check className="h-8 w-8 text-green-600" />
-              </div>
-              <h2 className="text-xl font-bold">Réservation confirmée !</h2>
-              <p className="text-muted-foreground">
-                Vous recevrez un email de confirmation à {form.email}
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <>
-            {/* Date selection */}
-            {(step === 'date' || step === 'time') && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Choisissez une date</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between mb-4">
-                    <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}>
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <span className="font-medium capitalize">
-                      {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
-                    </span>
-                    <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}>
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-7 gap-1">
-                    {['Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa', 'Di'].map((d) => (
-                      <div key={d} className="text-center text-xs font-medium text-muted-foreground py-1">{d}</div>
-                    ))}
-                    {calendarDays.map((day, i) => {
-                      if (!day) return <div key={i} />;
-                      const available = isDayAvailable(day);
-                      const isSelected = selectedDate &&
-                        selectedDate.getDate() === day &&
-                        selectedDate.getMonth() === month &&
-                        selectedDate.getFullYear() === year;
-
-                      return (
-                        <button
-                          key={i}
-                          type="button"
-                          disabled={!available}
-                          onClick={() => {
-                            setSelectedDate(new Date(year, month, day));
-                            setSelectedSlot(null);
-                            setStep('time');
-                          }}
-                          className={cn(
-                            'h-10 w-full rounded-md text-sm transition-colors',
-                            available ? 'hover:bg-primary/10 cursor-pointer' : 'text-muted-foreground/30 cursor-not-allowed',
-                            isSelected && 'bg-primary text-primary-foreground hover:bg-primary'
-                          )}
-                        >
-                          {day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Time selection */}
-            {step === 'time' && selectedDate && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">
-                    Créneaux du {selectedDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {timeSlots.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      Aucun créneau disponible ce jour. Essayez un autre jour.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
-                      {timeSlots.map((slot) => (
-                        <Button
-                          key={slot}
-                          type="button"
-                          variant={selectedSlot === slot ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => {
-                            setSelectedSlot(slot);
-                            setStep('form');
-                          }}
-                        >
-                          {slot}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => { setStep('date'); setSelectedDate(null); }}
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />Changer de date
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Contact form */}
-            {step === 'form' && selectedDate && selectedSlot && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Vos coordonnées</CardTitle>
-                  <CardDescription>
-                    {selectedDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} à {selectedSlot} — {data.link.dureeMinutes} min
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Prénom *</Label>
-                        <Input value={form.prenom} onChange={(e) => setForm({ ...form, prenom: e.target.value })} required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Nom *</Label>
-                        <Input value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} required />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Email *</Label>
-                      <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Téléphone</Label>
-                      <Input value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Entreprise</Label>
-                      <Input value={form.entreprise} onChange={(e) => setForm({ ...form, entreprise: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Message</Label>
-                      <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={3} />
-                    </div>
-
-                    {error && <p className="text-sm text-destructive">{error}</p>}
-
-                    <div className="flex gap-2">
-                      <Button type="button" variant="outline" onClick={() => setStep('time')}>
-                        <ChevronLeft className="h-4 w-4 mr-1" />Retour
-                      </Button>
-                      <Button type="submit" className="flex-1" disabled={submitting}>
-                        {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
-                        Confirmer la réservation
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-            )}
-          </>
-        )}
+        {/* Footer */}
+        <p className="text-center text-xs text-muted-foreground mt-8">
+          Propulsé par TaskerTime
+        </p>
       </div>
     </div>
   );

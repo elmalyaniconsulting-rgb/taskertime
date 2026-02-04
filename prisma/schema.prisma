@@ -667,6 +667,7 @@ model AvailabilityLink {
   
   // Relations
   bookings          Booking[]
+  slots             AvailabilitySlot[]
   
   @@map("availability_links")
 }
@@ -745,6 +746,7 @@ model Notification {
 }
 
 enum NotificationType {
+  RESERVATION
   NOUVELLE_RESERVATION
   RESERVATION_ANNULEE
   DEVIS_ACCEPTE
@@ -789,4 +791,24 @@ model UserSettings {
   updatedAt           DateTime @updatedAt
   
   @@map("user_settings")
+}
+
+// ============================================================================
+// CRÉNEAUX DISPONIBLES
+// ============================================================================
+
+model AvailabilitySlot {
+  id                  String   @id @default(uuid())
+  availabilityLinkId  String
+  availabilityLink    AvailabilityLink @relation(fields: [availabilityLinkId], references: [id], onDelete: Cascade)
+  
+  dateDebut           DateTime
+  dateFin             DateTime
+  
+  isBooked            Boolean  @default(false)
+  bookingId           String?
+  
+  createdAt           DateTime @default(now())
+  
+  @@map("availability_slots")
 }
