@@ -33,7 +33,6 @@ import {
   CreditCard,
   FileText,
   Check,
-  Trash2,
 } from 'lucide-react';
 import { getInitials, cn } from '@/lib/utils';
 
@@ -46,7 +45,8 @@ interface Notification {
   type: string;
   titre: string;
   message: string;
-  lien?: string;
+  entityType?: string;
+  entityId?: string;
   isRead: boolean;
   createdAt: string;
 }
@@ -99,11 +99,27 @@ export function Header({ onMenuToggle }: HeaderProps) {
     } catch {}
   };
 
+  // Build link from entityType/entityId
+  const getNotificationLink = (notif: Notification): string | null => {
+    if (notif.entityType && notif.entityId) {
+      const typeMap: Record<string, string> = {
+        invoice: 'invoices',
+        quote: 'quotes',
+        client: 'clients',
+        event: 'calendar',
+      };
+      const path = typeMap[notif.entityType] || notif.entityType;
+      return `/${path}/${notif.entityId}`;
+    }
+    return null;
+  };
+
   // Handle notification click
   const handleNotificationClick = (notif: Notification) => {
     if (!notif.isRead) markAsRead(notif.id);
-    if (notif.lien) {
-      router.push(notif.lien);
+    const link = getNotificationLink(notif);
+    if (link) {
+      router.push(link);
       setIsOpen(false);
     }
   };
@@ -220,11 +236,6 @@ export function Header({ onMenuToggle }: HeaderProps) {
                 </div>
               )}
             </ScrollArea>
-            <div className="p-2 border-t">
-              <Button variant="ghost" size="sm" className="w-full" asChild>
-                <Link href="/notifications">Voir toutes les notifications</Link>
-              </Button>
-            </div>
           </PopoverContent>
         </Popover>
 

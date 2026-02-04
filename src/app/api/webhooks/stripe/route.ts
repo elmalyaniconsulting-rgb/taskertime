@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
               type: 'PAIEMENT_RECU',
               titre: `Paiement reçu : ${amountPaid.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}`,
               message: `Paiement reçu pour la facture ${invoice.numero}`,
-              lien: `/invoices/${invoiceId}`,
+              entityType: 'invoice',
+              entityId: invoiceId,
             },
           });
         }
@@ -95,7 +96,8 @@ export async function POST(request: NextRequest) {
             type: 'PAIEMENT_RECU',
             titre: `Acompte reçu : ${amountPaid.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}`,
             message: `Acompte reçu pour le devis ${quote?.numero || quoteId}`,
-            lien: `/quotes/${quoteId}`,
+            entityType: 'quote',
+            entityId: quoteId,
           },
         });
       }
