@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/shared';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,6 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User, Building, CreditCard, Bell, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
 
@@ -22,7 +21,7 @@ interface StripeStatus {
   payoutsEnabled?: boolean;
 }
 
-export default function SettingsPage() {
+function SettingsContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
@@ -41,6 +40,16 @@ export default function SettingsPage() {
     iban: '', bic: '', banque: '',
     numeroNda: '', certifQualiopi: false,
   });
+
+  const fetchStripeStatus = async () => {
+    try {
+      const res = await fetch('/api/stripe/connect');
+      if (res.ok) {
+        const data = await res.json();
+        setStripeStatus(data);
+      }
+    } catch {}
+  };
 
   // Handle Stripe callback
   useEffect(() => {
@@ -90,16 +99,6 @@ export default function SettingsPage() {
 
     fetchStripeStatus();
   }, []);
-
-  const fetchStripeStatus = async () => {
-    try {
-      const res = await fetch('/api/stripe/connect');
-      if (res.ok) {
-        const data = await res.json();
-        setStripeStatus(data);
-      }
-    } catch {}
-  };
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -157,7 +156,6 @@ export default function SettingsPage() {
         throw new Error(data.error || 'Erreur connexion Stripe');
       }
 
-      // Redirect to Stripe onboarding
       window.location.href = data.url;
     } catch (err: any) {
       toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
@@ -444,5 +442,17 @@ export default function SettingsPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <SettingsContent />
+    </Suspense>
   );
 }
