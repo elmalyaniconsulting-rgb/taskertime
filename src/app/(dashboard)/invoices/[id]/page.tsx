@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useInvoice, useUpdateInvoice } from '@/hooks/use-api';
 import { PageHeader, StatusBadge, Currency } from '@/components/shared';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,13 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Send, AlertTriangle, FileDown, Mail, CreditCard, Loader2 } from 'lucide-react';
+import { ArrowLeft, Send, AlertTriangle, FileDown, Mail, CreditCard, Loader2, CheckCircle } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 export default function InvoiceDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { data: invoice, isLoading, refetch } = useInvoice(params.id as string);
   const updateInvoice = useUpdateInvoice();
@@ -28,6 +29,20 @@ export default function InvoiceDetailPage() {
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [emailMessage, setEmailMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+
+  // Handle payment callback
+  useEffect(() => {
+    const payment = searchParams.get('payment');
+    if (payment === 'success') {
+      toast({ title: 'Paiement réussi !', description: 'Le paiement a été traité avec succès.', variant: 'success' });
+      refetch();
+      router.replace(`/invoices/${params.id}`);
+    } else if (payment === 'cancelled') {
+      toast({ title: 'Paiement annulé', description: 'Le paiement a été annulé.' });
+      router.replace(`/invoices/${params.id}`);
+    }
+  }, [searchParams, params.id, router, toast, refetch]);
 
   if (isLoading) {
     return (
@@ -74,13 +89,13 @@ export default function InvoiceDetailPage() {
       if (data.fallback === 'mailto') {
         const mailtoUrl = `mailto:${data.to}?subject=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`;
         window.open(mailtoUrl, '_blank');
-        toast({ title: 'Client mail ouvert', description: 'Envoyez la facture via votre client mail.' });
+        toast({ title: 'Client mail ouvert' });
         refetch();
       } else if (res.ok) {
         toast({ title: 'Email envoyé', variant: 'success' });
         refetch();
       } else {
-        throw new Error(data.error || 'Erreur envoi');
+        throw new Error(data.error);
       }
     } catch (err: any) {
       toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
@@ -90,6 +105,32 @@ export default function InvoiceDetailPage() {
     setEmailMessage('');
   };
 
+  const handleCreatePaymentLink = async () => {
+    setIsCreatingPayment(true);
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}/payment`, { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur création lien');
+      }
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(data.url);
+      toast({ 
+        title: 'Lien de paiement créé', 
+        description: 'Le lien a été copié dans le presse-papier.',
+        variant: 'success' 
+      });
+
+      // Option: open payment page
+      window.open(data.url, '_blank');
+    } catch (err: any) {
+      toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
+    }
+    setIsCreatingPayment(false);
+  };
+
   const clientName = invoice.client.raisonSociale || `${invoice.client.prenom || ''} ${invoice.client.nom}`;
   const totalTTC = Number(invoice.totalTTC);
   const montantPaye = Number(invoice.montantPaye);
@@ -97,6 +138,7 @@ export default function InvoiceDetailPage() {
   const pctPaid = totalTTC > 0 ? (montantPaye / totalTTC) * 100 : 0;
   const isOverdue = !['PAYEE', 'ANNULEE', 'AVOIR'].includes(invoice.statut) && new Date(invoice.dateEcheance) < new Date();
   const hasTva = Number(invoice.totalTVA) > 0;
+  const isPaid = invoice.statut === 'PAYEE';
 
   return (
     <div className="space-y-6">
@@ -109,6 +151,14 @@ export default function InvoiceDetailPage() {
           <StatusBadge status={isOverdue ? 'EN_RETARD' : invoice.statut} />
         </div>
       </div>
+
+      {/* Paid success banner */}
+      {isPaid && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 text-green-700 text-sm">
+          <CheckCircle className="h-4 w-4" />
+          Facture entièrement payée
+        </div>
+      )}
 
       {/* Overdue warning */}
       {isOverdue && (
@@ -130,9 +180,19 @@ export default function InvoiceDetailPage() {
             </div>
             <Progress value={pctPaid} className="h-3" />
             {resteAPayer > 0 && (
-              <p className="text-sm text-muted-foreground mt-2">
-                Reste à payer : <Currency amount={resteAPayer} className="font-medium text-destructive" />
-              </p>
+              <div className="flex items-center justify-between mt-3">
+                <p className="text-sm text-muted-foreground">
+                  Reste à payer : <Currency amount={resteAPayer} className="font-medium text-destructive" />
+                </p>
+                <Button onClick={handleCreatePaymentLink} disabled={isCreatingPayment} size="sm">
+                  {isCreatingPayment ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CreditCard className="h-4 w-4 mr-2" />
+                  )}
+                  Lien de paiement
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -148,6 +208,16 @@ export default function InvoiceDetailPage() {
         {['ENVOYEE', 'VUE'].includes(invoice.statut) && (
           <Button variant="outline" onClick={() => setShowEmailDialog(true)}>
             <Mail className="h-4 w-4 mr-2" />Renvoyer
+          </Button>
+        )}
+        {resteAPayer > 0 && !['BROUILLON'].includes(invoice.statut) && (
+          <Button onClick={handleCreatePaymentLink} disabled={isCreatingPayment}>
+            {isCreatingPayment ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CreditCard className="h-4 w-4 mr-2" />
+            )}
+            Créer lien Stripe
           </Button>
         )}
         <Button variant="outline" onClick={handleDownloadPdf}>

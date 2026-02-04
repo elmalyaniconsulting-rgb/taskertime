@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuote, useUpdateQuote, useConvertQuote } from '@/hooks/use-api';
 import { PageHeader, StatusBadge, Currency } from '@/components/shared';
 import { Button } from '@/components/ui/button';
@@ -16,13 +16,14 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft, Send, CheckCircle, XCircle, ArrowRightLeft,
-  FileDown, Mail, Loader2,
+  FileDown, Mail, CreditCard, Loader2,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 export default function QuoteDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { data: quote, isLoading, refetch } = useQuote(params.id as string);
   const updateQuote = useUpdateQuote();
@@ -31,6 +32,20 @@ export default function QuoteDetailPage() {
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [emailMessage, setEmailMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+
+  // Handle payment callback
+  useEffect(() => {
+    const payment = searchParams.get('payment');
+    if (payment === 'success') {
+      toast({ title: 'Acompte payé !', description: 'L\'acompte a été reçu. Devis accepté.', variant: 'success' });
+      refetch();
+      router.replace(`/quotes/${params.id}`);
+    } else if (payment === 'cancelled') {
+      toast({ title: 'Paiement annulé' });
+      router.replace(`/quotes/${params.id}`);
+    }
+  }, [searchParams, params.id, router, toast, refetch]);
 
   if (isLoading) {
     return (
@@ -85,15 +100,15 @@ export default function QuoteDetailPage() {
       const data = await res.json();
 
       if (data.fallback === 'mailto') {
-        // No Resend configured, open mailto
         const mailtoUrl = `mailto:${data.to}?subject=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`;
         window.open(mailtoUrl, '_blank');
-        toast({ title: 'Client mail ouvert', description: 'Resend non configuré, ouverture du client mail.' });
+        toast({ title: 'Client mail ouvert' });
+        refetch();
       } else if (res.ok) {
-        toast({ title: 'Email envoyé', description: `Devis envoyé à ${quote.client.email}`, variant: 'success' });
+        toast({ title: 'Email envoyé', variant: 'success' });
         refetch();
       } else {
-        throw new Error(data.error || 'Erreur envoi');
+        throw new Error(data.error);
       }
     } catch (err: any) {
       toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
@@ -101,6 +116,30 @@ export default function QuoteDetailPage() {
     setIsSending(false);
     setShowEmailDialog(false);
     setEmailMessage('');
+  };
+
+  const handleCreatePaymentLink = async () => {
+    setIsCreatingPayment(true);
+    try {
+      const res = await fetch(`/api/quotes/${quote.id}/payment`, { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur création lien');
+      }
+
+      await navigator.clipboard.writeText(data.url);
+      toast({ 
+        title: 'Lien de paiement créé', 
+        description: 'Le lien a été copié. Le client peut payer l\'acompte.',
+        variant: 'success' 
+      });
+
+      window.open(data.url, '_blank');
+    } catch (err: any) {
+      toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
+    }
+    setIsCreatingPayment(false);
   };
 
   const clientName = quote.client.raisonSociale || `${quote.client.prenom || ''} ${quote.client.nom}`;
@@ -118,6 +157,30 @@ export default function QuoteDetailPage() {
         />
         <div className="ml-auto"><StatusBadge status={quote.statut} /></div>
       </div>
+
+      {/* Acompte card if required */}
+      {quote.acompteRequis && quote.acompteMontant && ['ENVOYE', 'VU'].includes(quote.statut) && (
+        <Card className="border-primary/50 bg-primary/5">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Acompte requis : {Number(quote.acomptePourcent)}%</p>
+                <p className="text-2xl font-bold text-primary">
+                  <Currency amount={Number(quote.acompteMontant)} />
+                </p>
+              </div>
+              <Button onClick={handleCreatePaymentLink} disabled={isCreatingPayment}>
+                {isCreatingPayment ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CreditCard className="h-4 w-4 mr-2" />
+                )}
+                Lien paiement acompte
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
