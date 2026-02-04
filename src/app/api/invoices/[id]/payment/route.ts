@@ -8,7 +8,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2023-10-16',
 });
 
-// POST /api/invoices/[id]/payment - Create Stripe payment link
+// POST /api/invoices/[id]/payment - Create Stripe payment link (Connect)
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       where: { id: params.id, userId: session.user.id },
       include: {
         client: true,
-        user: { select: { firstName: true, lastName: true, email: true, stripeAccountId: true } },
+        user: { select: { firstName: true, lastName: true, email: true, stripeAccountId: true, stripeOnboarded: true } },
       },
     });
 
@@ -32,16 +32,28 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: 'Facture introuvable' }, { status: 404 });
     }
 
+    // Check if user has connected Stripe
+    if (!invoice.user.stripeAccountId || !invoice.user.stripeOnboarded) {
+      return NextResponse.json({ 
+        error: 'Compte Stripe non connecté',
+        needsSetup: true,
+        message: 'Connectez votre compte Stripe dans Paramètres → Facturation pour recevoir des paiements.'
+      }, { status: 400 });
+    }
+
     const resteAPayer = Number(invoice.resteAPayer);
     if (resteAPayer <= 0) {
       return NextResponse.json({ error: 'Facture déjà payée' }, { status: 400 });
     }
 
-    const clientName = invoice.client.raisonSociale || `${invoice.client.prenom || ''} ${invoice.client.nom}`;
     const userName = `${invoice.user.firstName} ${invoice.user.lastName}`;
     const baseUrl = process.env.NEXTAUTH_URL || 'https://taskertime.vercel.app';
 
-    // Create Stripe Checkout Session
+    // Calculate platform fee (2%)
+    const platformFeePercent = 2;
+    const applicationFee = Math.round(resteAPayer * platformFeePercent);
+
+    // Create Stripe Checkout Session with Connect
     const checkoutSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
@@ -54,11 +66,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
               name: `Facture ${invoice.numero}`,
               description: `Paiement à ${userName}`,
             },
-            unit_amount: Math.round(resteAPayer * 100), // Stripe uses cents
+            unit_amount: Math.round(resteAPayer * 100),
           },
           quantity: 1,
         },
       ],
+      payment_intent_data: {
+        application_fee_amount: applicationFee, // Platform fee in cents
+        transfer_data: {
+          destination: invoice.user.stripeAccountId, // Money goes to pro's account
+        },
+      },
       metadata: {
         type: 'invoice',
         invoiceId: invoice.id,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,13 +10,26 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Save, User, Building, CreditCard, Bell } from 'lucide-react';
+import { Loader2, Save, User, Building, CreditCard, Bell, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
+
+interface StripeStatus {
+  connected: boolean;
+  accountId?: string;
+  onboarded?: boolean;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
+}
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
+  const [stripeStatus, setStripeStatus] = useState<StripeStatus>({ connected: false });
+  const [isConnectingStripe, setIsConnectingStripe] = useState(false);
+  
   const [profile, setProfile] = useState({
     firstName: '', lastName: '', phone: '', activite: '',
     siret: '', siren: '', tvaIntracom: '', rcs: '',
@@ -28,6 +41,17 @@ export default function SettingsPage() {
     iban: '', bic: '', banque: '',
     numeroNda: '', certifQualiopi: false,
   });
+
+  // Handle Stripe callback
+  useEffect(() => {
+    const stripeParam = searchParams.get('stripe');
+    if (stripeParam === 'success') {
+      toast({ title: 'Stripe connecté !', description: 'Votre compte Stripe est maintenant actif.', variant: 'success' });
+      fetchStripeStatus();
+    } else if (stripeParam === 'refresh') {
+      toast({ title: 'Session expirée', description: 'Veuillez relancer la connexion Stripe.' });
+    }
+  }, [searchParams, toast]);
 
   // Load settings from API
   useEffect(() => {
@@ -63,7 +87,19 @@ export default function SettingsPage() {
       })
       .catch(() => {})
       .finally(() => setIsFetching(false));
+
+    fetchStripeStatus();
   }, []);
+
+  const fetchStripeStatus = async () => {
+    try {
+      const res = await fetch('/api/stripe/connect');
+      if (res.ok) {
+        const data = await res.json();
+        setStripeStatus(data);
+      }
+    } catch {}
+  };
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -109,6 +145,34 @@ export default function SettingsPage() {
       toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
     }
     setIsLoading(false);
+  };
+
+  const handleConnectStripe = async () => {
+    setIsConnectingStripe(true);
+    try {
+      const res = await fetch('/api/stripe/connect', { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur connexion Stripe');
+      }
+
+      // Redirect to Stripe onboarding
+      window.location.href = data.url;
+    } catch (err: any) {
+      toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
+      setIsConnectingStripe(false);
+    }
+  };
+
+  const handleDisconnectStripe = async () => {
+    try {
+      await fetch('/api/stripe/connect', { method: 'DELETE' });
+      setStripeStatus({ connected: false });
+      toast({ title: 'Compte Stripe déconnecté' });
+    } catch (err: any) {
+      toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
+    }
   };
 
   if (isFetching) {
@@ -237,6 +301,72 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="billing" className="mt-6 space-y-6">
+          {/* Stripe Connect Section */}
+          <Card className="border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                Paiements en ligne
+              </CardTitle>
+              <CardDescription>
+                Connectez votre compte Stripe pour recevoir des paiements par carte bancaire
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {stripeStatus.connected && stripeStatus.onboarded ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle className="h-5 w-5" />
+                    <span className="font-medium">Compte Stripe connecté</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    ID : <code className="bg-muted px-1 rounded">{stripeStatus.accountId}</code>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <a href="https://dashboard.stripe.com" target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Dashboard Stripe
+                      </a>
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={handleDisconnectStripe}>
+                      Déconnecter
+                    </Button>
+                  </div>
+                </div>
+              ) : stripeStatus.connected && !stripeStatus.onboarded ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-amber-600">
+                    <AlertCircle className="h-5 w-5" />
+                    <span className="font-medium">Configuration incomplète</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Votre compte Stripe nécessite des informations supplémentaires.
+                  </p>
+                  <Button onClick={handleConnectStripe} disabled={isConnectingStripe}>
+                    {isConnectingStripe && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Compléter la configuration
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <AlertCircle className="h-5 w-5" />
+                    <span>Non connecté</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Connectez votre compte Stripe pour permettre à vos clients de payer leurs factures par carte bancaire. 
+                    L&apos;argent sera versé directement sur votre compte.
+                  </p>
+                  <Button onClick={handleConnectStripe} disabled={isConnectingStripe}>
+                    {isConnectingStripe && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Connecter Stripe
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>TVA & Facturation</CardTitle>

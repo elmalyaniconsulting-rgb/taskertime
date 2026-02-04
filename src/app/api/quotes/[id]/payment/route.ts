@@ -8,7 +8,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2023-10-16',
 });
 
-// POST /api/quotes/[id]/payment - Create Stripe payment link for acompte
+// POST /api/quotes/[id]/payment - Create Stripe payment link for acompte (Connect)
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
@@ -24,12 +24,21 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       where: { id: params.id, userId: session.user.id },
       include: {
         client: true,
-        user: { select: { firstName: true, lastName: true, email: true } },
+        user: { select: { firstName: true, lastName: true, email: true, stripeAccountId: true, stripeOnboarded: true } },
       },
     });
 
     if (!quote) {
       return NextResponse.json({ error: 'Devis introuvable' }, { status: 404 });
+    }
+
+    // Check if user has connected Stripe
+    if (!quote.user.stripeAccountId || !quote.user.stripeOnboarded) {
+      return NextResponse.json({ 
+        error: 'Compte Stripe non connecté',
+        needsSetup: true,
+        message: 'Connectez votre compte Stripe dans Paramètres → Facturation pour recevoir des paiements.'
+      }, { status: 400 });
     }
 
     if (!quote.acompteRequis || !quote.acompteMontant) {
@@ -40,7 +49,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const userName = `${quote.user.firstName} ${quote.user.lastName}`;
     const baseUrl = process.env.NEXTAUTH_URL || 'https://taskertime.vercel.app';
 
-    // Create Stripe Checkout Session
+    // Calculate platform fee (2%)
+    const platformFeePercent = 2;
+    const applicationFee = Math.round(acompteMontant * platformFeePercent);
+
+    // Create Stripe Checkout Session with Connect
     const checkoutSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
@@ -58,6 +71,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           quantity: 1,
         },
       ],
+      payment_intent_data: {
+        application_fee_amount: applicationFee,
+        transfer_data: {
+          destination: quote.user.stripeAccountId,
+        },
+      },
       metadata: {
         type: 'quote_acompte',
         quoteId: quote.id,

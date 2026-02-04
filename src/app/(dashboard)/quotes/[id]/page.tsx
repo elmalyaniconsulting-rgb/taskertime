@@ -125,7 +125,15 @@ export default function QuoteDetailPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Erreur création lien');
+        if (data.needsSetup) {
+        toast({ 
+          title: 'Stripe non configuré', 
+          description: data.message || 'Connectez votre compte Stripe dans Paramètres.',
+          variant: 'destructive' 
+        });
+        return;
+      }
+      throw new Error(data.error || 'Erreur création lien');
       }
 
       await navigator.clipboard.writeText(data.url);
