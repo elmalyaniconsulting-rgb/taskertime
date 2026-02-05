@@ -18,10 +18,10 @@ import {
   Clock, MapPin, Loader2, Copy, Mail, MessageCircle, Phone, Check
 } from 'lucide-react';
 
-type ViewMode = 'day' | 'week' | 'month';
+type ViewMode = 'day' | 'week';
 
 interface SelectedSlot {
-  date: string; // YYYY-MM-DD
+  date: string;
   hour: number;
 }
 
@@ -30,15 +30,11 @@ export default function NewBookingPage() {
   const { toast } = useToast();
   const { data: prestations } = usePrestations();
 
-  // Step management
   const [step, setStep] = useState(1);
-
-  // Step 1: Calendar selection
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedSlots, setSelectedSlots] = useState<SelectedSlot[]>([]);
 
-  // Step 2: Configuration
   const [form, setForm] = useState({
     nom: '',
     description: '',
@@ -53,12 +49,11 @@ export default function NewBookingPage() {
   const navigate = (delta: number) => {
     const d = new Date(currentDate);
     if (viewMode === 'day') d.setDate(d.getDate() + delta);
-    else if (viewMode === 'week') d.setDate(d.getDate() + delta * 7);
-    else d.setMonth(d.getMonth() + delta);
+    else d.setDate(d.getDate() + delta * 7);
     setCurrentDate(d);
   };
 
-  // Get week start
+  // Week start (Monday)
   const weekStart = useMemo(() => {
     const d = new Date(currentDate);
     const day = d.getDay();
@@ -79,10 +74,9 @@ export default function NewBookingPage() {
     return days;
   }, [weekStart]);
 
-  // Hours
-  const hours = Array.from({ length: 12 }, (_, i) => i + 8); // 8h - 19h
+  // Hours 7h - 20h
+  const hours = Array.from({ length: 14 }, (_, i) => i + 7);
 
-  // Toggle slot selection
   const toggleSlot = (date: Date, hour: number) => {
     const dateStr = date.toISOString().split('T')[0];
     const key = `${dateStr}-${hour}`;
@@ -111,16 +105,13 @@ export default function NewBookingPage() {
     return slotDate < new Date();
   };
 
-  // View title
   const viewTitle = useMemo(() => {
     if (viewMode === 'day') {
       return currentDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    } else if (viewMode === 'week') {
+    } else {
       const end = new Date(weekStart);
       end.setDate(end.getDate() + 6);
       return `${weekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} — ${end.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
-    } else {
-      return currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
     }
   }, [currentDate, viewMode, weekStart]);
 
@@ -172,7 +163,6 @@ export default function NewBookingPage() {
     setIsCreating(false);
   };
 
-  // Share functions
   const copyLink = async () => {
     if (createdLink) {
       await navigator.clipboard.writeText(createdLink.url);
@@ -210,33 +200,27 @@ export default function NewBookingPage() {
         </Button>
         <PageHeader
           title="Créer un créneau disponible"
-          description={step === 1 ? 'Sélectionnez vos disponibilités' : step === 2 ? 'Configurez votre créneau' : 'Partagez le lien'}
+          description={step === 1 ? 'Étape 1 : Sélectionnez vos disponibilités' : step === 2 ? 'Étape 2 : Configurez votre créneau' : 'Étape 3 : Partagez le lien'}
         />
       </div>
 
-      {/* Progress */}
+      {/* Progress bar */}
       <div className="flex items-center gap-2">
         {[1, 2, 3].map((s) => (
-          <div
-            key={s}
-            className={cn(
-              'flex-1 h-2 rounded-full transition-colors',
-              s <= step ? 'bg-primary' : 'bg-muted'
-            )}
-          />
+          <div key={s} className={cn('flex-1 h-2 rounded-full', s <= step ? 'bg-primary' : 'bg-muted')} />
         ))}
       </div>
 
-      {/* STEP 1: Calendar Selection */}
+      {/* STEP 1: Calendar */}
       {step === 1 && (
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="icon" onClick={() => navigate(-1)}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <h3 className="font-semibold capitalize">{viewTitle}</h3>
+                <span className="font-semibold capitalize min-w-[200px] text-center">{viewTitle}</span>
                 <Button variant="outline" size="icon" onClick={() => navigate(1)}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -248,24 +232,19 @@ export default function NewBookingPage() {
                 </TabsList>
               </Tabs>
             </div>
-            <CardDescription>
-              Cliquez sur les créneaux pour les sélectionner. {selectedSlots.length} créneau(x) sélectionné(s).
+            <CardDescription className="mt-2">
+              Cliquez sur les créneaux pour les sélectionner • <strong>{selectedSlots.length}</strong> créneau(x) sélectionné(s)
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-0 overflow-auto">
+          
+          <CardContent className="p-0 overflow-x-auto">
             {viewMode === 'week' && (
-              <div className="min-w-[600px]">
-                {/* Header */}
-                <div className="flex border-b sticky top-0 bg-background z-10">
-                  <div className="w-16 shrink-0 border-r" />
+              <div className="min-w-[700px]">
+                {/* Week header */}
+                <div className="grid grid-cols-8 border-b">
+                  <div className="p-2 border-r bg-muted/30" />
                   {weekDays.map((day, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        'flex-1 py-2 px-1 text-center border-r',
-                        isToday(day) && 'bg-primary/10'
-                      )}
-                    >
+                    <div key={i} className={cn('p-2 text-center border-r', isToday(day) && 'bg-primary/10')}>
                       <div className="text-xs text-muted-foreground">
                         {day.toLocaleDateString('fr-FR', { weekday: 'short' })}
                       </div>
@@ -275,11 +254,12 @@ export default function NewBookingPage() {
                     </div>
                   ))}
                 </div>
-                {/* Hours grid */}
+                
+                {/* Time grid */}
                 {hours.map((hour) => (
-                  <div key={hour} className="flex border-b">
-                    <div className="w-16 py-2 px-2 text-xs text-muted-foreground border-r shrink-0">
-                      {`${hour}:00`}
+                  <div key={hour} className="grid grid-cols-8 border-b">
+                    <div className="p-2 text-xs text-muted-foreground text-right pr-3 border-r bg-muted/30">
+                      {`${hour}h`}
                     </div>
                     {weekDays.map((day, i) => {
                       const selected = isSlotSelected(day, hour);
@@ -289,9 +269,9 @@ export default function NewBookingPage() {
                           key={i}
                           onClick={() => !past && toggleSlot(day, hour)}
                           className={cn(
-                            'flex-1 min-h-[40px] border-r cursor-pointer transition-colors flex items-center justify-center',
-                            past && 'bg-muted/30 cursor-not-allowed',
-                            !past && !selected && 'hover:bg-primary/10',
+                            'h-10 border-r cursor-pointer transition-all flex items-center justify-center',
+                            past && 'bg-muted/50 cursor-not-allowed',
+                            !past && !selected && 'hover:bg-primary/20',
                             selected && 'bg-primary text-primary-foreground'
                           )}
                         >
@@ -306,7 +286,7 @@ export default function NewBookingPage() {
 
             {viewMode === 'day' && (
               <div className="p-4">
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                   {hours.map((hour) => {
                     const selected = isSlotSelected(currentDate, hour);
                     const past = isPast(currentDate, hour);
@@ -315,11 +295,11 @@ export default function NewBookingPage() {
                         key={hour}
                         variant={selected ? 'default' : 'outline'}
                         disabled={past}
-                        onClick={() => !past && toggleSlot(currentDate, hour)}
+                        onClick={() => toggleSlot(currentDate, hour)}
                         className="h-12"
                       >
                         {`${hour}:00`}
-                        {selected && <Check className="h-4 w-4 ml-2" />}
+                        {selected && <Check className="h-4 w-4 ml-1" />}
                       </Button>
                     );
                   })}
@@ -327,10 +307,11 @@ export default function NewBookingPage() {
               </div>
             )}
           </CardContent>
-          <div className="p-4 border-t flex justify-between">
-            <div className="text-sm text-muted-foreground">
+          
+          <div className="p-4 border-t flex justify-between items-center">
+            <p className="text-sm text-muted-foreground">
               {selectedSlots.length} créneau(x) sélectionné(s)
-            </div>
+            </p>
             <Button onClick={() => setStep(2)} disabled={selectedSlots.length === 0}>
               Suivant <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
@@ -343,8 +324,8 @@ export default function NewBookingPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Configuration
+              <Calendar className="h-5 w-5 text-primary" />
+              Configuration du créneau
             </CardTitle>
             <CardDescription>
               {selectedSlots.length} créneau(x) sélectionné(s)
@@ -356,7 +337,7 @@ export default function NewBookingPage() {
               <Input
                 value={form.nom}
                 onChange={(e) => setForm({ ...form, nom: e.target.value })}
-                placeholder="Ex: Consultation découverte, Formation..."
+                placeholder="Ex: Consultation découverte, Coaching..."
               />
             </div>
 
@@ -365,14 +346,14 @@ export default function NewBookingPage() {
               <Textarea
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Détails sur le rendez-vous..."
+                placeholder="Décrivez ce rendez-vous..."
                 rows={2}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Prestation</Label>
+                <Label>Prestation associée</Label>
                 <Select value={form.prestationId} onValueChange={(v) => setForm({ ...form, prestationId: v === '_none' ? '' : v })}>
                   <SelectTrigger><SelectValue placeholder="Aucune" /></SelectTrigger>
                   <SelectContent>
@@ -404,7 +385,7 @@ export default function NewBookingPage() {
               <Input
                 value={form.lieu}
                 onChange={(e) => setForm({ ...form, lieu: e.target.value })}
-                placeholder="Adresse ou Visio"
+                placeholder="Adresse, Visio, Téléphone..."
               />
             </div>
           </CardContent>
@@ -412,7 +393,7 @@ export default function NewBookingPage() {
             <Button variant="outline" onClick={() => setStep(1)}>
               <ArrowLeft className="h-4 w-4 mr-2" /> Retour
             </Button>
-            <Button onClick={handleCreate} disabled={isCreating}>
+            <Button onClick={handleCreate} disabled={isCreating || !form.nom}>
               {isCreating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Créer le créneau
             </Button>
@@ -423,41 +404,39 @@ export default function NewBookingPage() {
       {/* STEP 3: Share */}
       {step === 3 && createdLink && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-green-600">
-              <Check className="h-5 w-5" />
-              Créneau créé !
-            </CardTitle>
+          <CardHeader className="text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="h-8 w-8 text-green-600" />
+            </div>
+            <CardTitle className="text-green-600">Créneau créé avec succès !</CardTitle>
             <CardDescription>
               Partagez ce lien avec vos clients pour qu&apos;ils puissent réserver.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Link display */}
-            <div className="p-4 bg-muted rounded-lg flex items-center gap-2">
-              <Input value={createdLink.url} readOnly className="flex-1 bg-background" />
+            <div className="flex gap-2">
+              <Input value={createdLink.url} readOnly className="flex-1 font-mono text-sm" />
               <Button onClick={copyLink}>
                 <Copy className="h-4 w-4 mr-2" />
                 Copier
               </Button>
             </div>
 
-            {/* Share options */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Button variant="outline" className="h-auto py-4 flex-col gap-2" onClick={shareEmail}>
-                <Mail className="h-6 w-6" />
+                <Mail className="h-6 w-6 text-blue-600" />
                 <span>Email</span>
               </Button>
               <Button variant="outline" className="h-auto py-4 flex-col gap-2" onClick={shareWhatsApp}>
-                <MessageCircle className="h-6 w-6" />
+                <MessageCircle className="h-6 w-6 text-green-600" />
                 <span>WhatsApp</span>
               </Button>
               <Button variant="outline" className="h-auto py-4 flex-col gap-2" onClick={shareSMS}>
-                <Phone className="h-6 w-6" />
+                <Phone className="h-6 w-6 text-purple-600" />
                 <span>SMS</span>
               </Button>
               <Button variant="outline" className="h-auto py-4 flex-col gap-2" onClick={copyLink}>
-                <Copy className="h-6 w-6" />
+                <Copy className="h-6 w-6 text-gray-600" />
                 <span>Copier</span>
               </Button>
             </div>

@@ -30,7 +30,7 @@ const navigation = [
   { name: 'Devis', href: '/quotes', icon: FileText },
   { name: 'Factures', href: '/invoices', icon: Receipt },
   { name: 'Contrats', href: '/contracts', icon: FileSignature },
-  { name: 'Réservation', href: '/booking-links', icon: Link2 },
+  { name: 'Réservation', href: '/bookings', icon: Link2 },
   { name: 'Statistiques', href: '/stats', icon: BarChart3 },
   { name: 'Paramètres', href: '/settings', icon: Settings },
 ];

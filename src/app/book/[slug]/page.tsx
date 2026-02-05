@@ -23,10 +23,7 @@ interface BookingData {
   description?: string;
   dureeMinutes: number;
   lieu?: string;
-  pro: {
-    nom: string;
-    activite?: string;
-  };
+  pro: { nom: string; activite?: string };
   slots: Slot[];
 }
 
@@ -37,26 +34,12 @@ export default function PublicBookingPage() {
   const [error, setError] = useState<string | null>(null);
   
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
-  const [form, setForm] = useState({
-    nom: '',
-    prenom: '',
-    email: '',
-    telephone: '',
-    message: '',
-  });
+  const [form, setForm] = useState({ nom: '', prenom: '', email: '', telephone: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [bookedSlot, setBookedSlot] = useState<{ dateDebut: string } | null>(null);
+  const [bookedDate, setBookedDate] = useState<string | null>(null);
 
-  // Pagination for dates
-  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
-    const d = new Date();
-    const day = d.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    d.setDate(d.getDate() + diff);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
+  const [weekOffset, setWeekOffset] = useState(0);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -66,8 +49,7 @@ export default function PublicBookingPage() {
           const err = await res.json();
           throw new Error(err.error || 'Lien invalide');
         }
-        const json = await res.json();
-        setData(json);
+        setData(await res.json());
       } catch (err: any) {
         setError(err.message);
       }
@@ -85,29 +67,28 @@ export default function PublicBookingPage() {
       if (!map[day]) map[day] = [];
       map[day].push(slot);
     });
-    // Sort slots within each day
     Object.keys(map).forEach((day) => {
       map[day].sort((a, b) => new Date(a.dateDebut).getTime() - new Date(b.dateDebut).getTime());
     });
     return map;
   }, [data]);
 
-  // Get days for current week view
+  // Week days for current offset
   const weekDays = useMemo(() => {
+    const today = new Date();
+    const day = today.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() + diff + weekOffset * 7);
+    
     const days: Date[] = [];
-    const d = new Date(currentWeekStart);
     for (let i = 0; i < 7; i++) {
-      days.push(new Date(d));
-      d.setDate(d.getDate() + 1);
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      days.push(d);
     }
     return days;
-  }, [currentWeekStart]);
-
-  const navigateWeek = (delta: number) => {
-    const d = new Date(currentWeekStart);
-    d.setDate(d.getDate() + delta * 7);
-    setCurrentWeekStart(d);
-  };
+  }, [weekOffset]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,8 +114,7 @@ export default function PublicBookingPage() {
         throw new Error(err.error);
       }
 
-      const result = await res.json();
-      setBookedSlot({ dateDebut: selectedSlot.dateDebut });
+      setBookedDate(selectedSlot.dateDebut);
       setIsSuccess(true);
     } catch (err: any) {
       setError(err.message);
@@ -144,10 +124,11 @@ export default function PublicBookingPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
-        <div className="max-w-2xl mx-auto pt-8">
-          <Skeleton className="h-12 w-48 mb-4" />
-          <Skeleton className="h-64" />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+        <div className="max-w-2xl mx-auto pt-12">
+          <Skeleton className="h-20 w-20 rounded-full mx-auto mb-4" />
+          <Skeleton className="h-8 w-48 mx-auto mb-2" />
+          <Skeleton className="h-64 mt-8" />
         </div>
       </div>
     );
@@ -155,11 +136,11 @@ export default function PublicBookingPage() {
 
   if (error && !isSuccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="pt-6 text-center">
-            <div className="text-4xl mb-4">😕</div>
-            <h2 className="text-xl font-semibold mb-2">Oups !</h2>
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full text-center">
+          <CardContent className="pt-8 pb-8">
+            <div className="text-5xl mb-4">😕</div>
+            <h2 className="text-xl font-bold mb-2">Oups !</h2>
             <p className="text-muted-foreground">{error}</p>
           </CardContent>
         </Card>
@@ -167,24 +148,24 @@ export default function PublicBookingPage() {
     );
   }
 
-  if (isSuccess && bookedSlot) {
+  if (isSuccess && bookedDate) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-green-900 dark:to-emerald-800 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="pt-6 text-center">
-            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Check className="h-8 w-8 text-white" />
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full text-center">
+          <CardContent className="pt-8 pb-8">
+            <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Check className="h-10 w-10 text-white" />
             </div>
             <h2 className="text-2xl font-bold mb-2">Réservation envoyée !</h2>
-            <p className="text-muted-foreground mb-4">
-              Votre demande de réservation a été envoyée à {data?.pro.nom}.<br />
+            <p className="text-muted-foreground mb-6">
+              Votre demande a été transmise à {data?.pro.nom}.<br />
               Vous recevrez une confirmation par email.
             </p>
-            <div className="bg-muted rounded-lg p-4 text-left">
-              <p className="font-semibold">{data?.nom}</p>
-              <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+            <div className="bg-white rounded-lg p-4 text-left border">
+              <p className="font-semibold text-lg">{data?.nom}</p>
+              <p className="text-sm text-muted-foreground flex items-center gap-2 mt-2">
                 <Calendar className="h-4 w-4" />
-                {new Date(bookedSlot.dateDebut).toLocaleDateString('fr-FR', {
+                {new Date(bookedDate).toLocaleDateString('fr-FR', {
                   weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
                 })}
               </p>
@@ -198,27 +179,23 @@ export default function PublicBookingPage() {
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
-      <div className="max-w-3xl mx-auto pt-8 pb-16">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+      <div className="max-w-3xl mx-auto px-4 py-12">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <User className="h-8 w-8 text-primary" />
+          <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <User className="h-10 w-10 text-primary" />
           </div>
           <h1 className="text-2xl font-bold">{data.pro.nom}</h1>
-          {data.pro.activite && (
-            <p className="text-muted-foreground">{data.pro.activite}</p>
-          )}
+          {data.pro.activite && <p className="text-muted-foreground">{data.pro.activite}</p>}
         </div>
 
-        {/* Booking card */}
-        <Card className="shadow-xl">
-          <CardHeader>
-            <CardTitle>{data.nom}</CardTitle>
-            {data.description && (
-              <CardDescription>{data.description}</CardDescription>
-            )}
-            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
+        {/* Booking Card */}
+        <Card className="shadow-xl border-0">
+          <CardHeader className="border-b bg-muted/30">
+            <CardTitle className="text-xl">{data.nom}</CardTitle>
+            {data.description && <CardDescription>{data.description}</CardDescription>}
+            <div className="flex items-center gap-4 text-sm text-muted-foreground pt-2">
               <span className="flex items-center gap-1">
                 <Clock className="h-4 w-4" />
                 {data.dureeMinutes} min
@@ -231,29 +208,30 @@ export default function PublicBookingPage() {
               )}
             </div>
           </CardHeader>
-          <CardContent>
+
+          <CardContent className="p-6">
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Slot selection */}
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">Choisissez un créneau</Label>
+              {/* Slot Selection */}
+              <div>
+                <Label className="text-base font-semibold mb-4 block">Choisissez un créneau</Label>
                 
                 {/* Week navigation */}
-                <div className="flex items-center justify-between">
-                  <Button type="button" variant="outline" size="sm" onClick={() => navigateWeek(-1)}>
-                    <ChevronLeft className="h-4 w-4" />
+                <div className="flex items-center justify-between mb-4">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setWeekOffset(w => w - 1)}>
+                    <ChevronLeft className="h-4 w-4 mr-1" /> Précédent
                   </Button>
                   <span className="text-sm font-medium">
-                    {currentWeekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                    {weekDays[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                     {' — '}
-                    {new Date(currentWeekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                    {weekDays[6].toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                   </span>
-                  <Button type="button" variant="outline" size="sm" onClick={() => navigateWeek(1)}>
-                    <ChevronRight className="h-4 w-4" />
+                  <Button type="button" variant="outline" size="sm" onClick={() => setWeekOffset(w => w + 1)}>
+                    Suivant <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 </div>
 
-                {/* Slots grid by day */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* Slots grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
                   {weekDays.map((day) => {
                     const dayStr = day.toISOString().split('T')[0];
                     const daySlots = slotsByDay[dayStr] || [];
@@ -262,13 +240,17 @@ export default function PublicBookingPage() {
                     return (
                       <div key={dayStr} className="space-y-2">
                         <div className={cn(
-                          'text-center text-sm font-medium py-1 rounded',
-                          isToday && 'bg-primary/10 text-primary'
+                          'text-center text-sm font-medium py-2 rounded-lg',
+                          isToday ? 'bg-primary text-primary-foreground' : 'bg-muted'
                         )}>
-                          {day.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}
+                          <div className="text-xs opacity-80">
+                            {day.toLocaleDateString('fr-FR', { weekday: 'short' })}
+                          </div>
+                          <div>{day.getDate()}</div>
                         </div>
+                        
                         {daySlots.length === 0 ? (
-                          <div className="text-xs text-muted-foreground text-center py-2">—</div>
+                          <div className="text-xs text-muted-foreground text-center py-3">—</div>
                         ) : (
                           <div className="space-y-1">
                             {daySlots.map((slot) => {
@@ -280,7 +262,7 @@ export default function PublicBookingPage() {
                                   type="button"
                                   variant={isSelected ? 'default' : 'outline'}
                                   size="sm"
-                                  className="w-full"
+                                  className="w-full text-xs"
                                   onClick={() => setSelectedSlot(slot)}
                                 >
                                   {time}
@@ -295,15 +277,15 @@ export default function PublicBookingPage() {
                 </div>
 
                 {data.slots.length === 0 && (
-                  <p className="text-center text-muted-foreground py-4">
+                  <p className="text-center text-muted-foreground py-8">
                     Aucun créneau disponible pour le moment.
                   </p>
                 )}
               </div>
 
-              {/* Contact form */}
+              {/* Contact Form */}
               {selectedSlot && (
-                <div className="space-y-4 pt-4 border-t">
+                <div className="space-y-4 pt-6 border-t">
                   <Label className="text-base font-semibold">Vos informations</Label>
                   
                   <div className="grid grid-cols-2 gap-4">
@@ -313,6 +295,7 @@ export default function PublicBookingPage() {
                         value={form.prenom}
                         onChange={(e) => setForm({ ...form, prenom: e.target.value })}
                         required
+                        placeholder="Jean"
                       />
                     </div>
                     <div className="space-y-2">
@@ -321,6 +304,7 @@ export default function PublicBookingPage() {
                         value={form.nom}
                         onChange={(e) => setForm({ ...form, nom: e.target.value })}
                         required
+                        placeholder="Dupont"
                       />
                     </div>
                   </div>
@@ -332,6 +316,7 @@ export default function PublicBookingPage() {
                       value={form.email}
                       onChange={(e) => setForm({ ...form, email: e.target.value })}
                       required
+                      placeholder="jean.dupont@email.com"
                     />
                   </div>
 
@@ -341,6 +326,7 @@ export default function PublicBookingPage() {
                       type="tel"
                       value={form.telephone}
                       onChange={(e) => setForm({ ...form, telephone: e.target.value })}
+                      placeholder="06 12 34 56 78"
                     />
                   </div>
 
@@ -354,7 +340,11 @@ export default function PublicBookingPage() {
                     />
                   </div>
 
-                  <Button type="submit" className="w-full h-12 text-lg" disabled={isSubmitting}>
+                  <Button 
+                    type="submit" 
+                    className="w-full h-12 text-lg mt-4" 
+                    disabled={isSubmitting || !form.nom || !form.prenom || !form.email}
+                  >
                     {isSubmitting ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
                     ) : (
@@ -367,9 +357,8 @@ export default function PublicBookingPage() {
           </CardContent>
         </Card>
 
-        {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-8">
-          Propulsé par TaskerTime
+          Propulsé par <strong>TaskerTime</strong>
         </p>
       </div>
     </div>

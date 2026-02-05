@@ -1,10 +1,12 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { nanoid } from 'nanoid';
 
-// GET /api/booking-links - List all booking links
+// GET /api/booking-links
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -32,11 +34,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(links);
   } catch (error: any) {
+    console.error('GET booking-links error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// POST /api/booking-links - Create booking link with slots
+// POST /api/booking-links
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -51,7 +54,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nom et créneaux requis' }, { status: 400 });
     }
 
-    // Generate unique slug
     const slug = nanoid(10);
 
     const link = await prisma.availabilityLink.create({
@@ -77,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(link, { status: 201 });
   } catch (error: any) {
-    console.error('Create booking link error:', error);
+    console.error('POST booking-links error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

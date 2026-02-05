@@ -4,15 +4,37 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/shared';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Plus, Calendar, Clock, User, Mail, ExternalLink, 
-  Copy, Check, X, Loader2, Link as LinkIcon, Trash2
+  Copy, Check, X, Loader2, Link as LinkIcon, Trash2,
+  Eye, Share2, Ban
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface Slot {
+  id: string;
+  dateDebut: string;
+  dateFin: string;
+  isBooked: boolean;
+}
+
+interface Booking {
+  id: string;
+  nom: string;
+  prenom: string;
+  email: string;
+  telephone?: string;
+  dateDebut: string;
+  dateFin: string;
+  statut: string;
+  message?: string;
+}
 
 interface BookingLink {
   id: string;
@@ -22,18 +44,18 @@ interface BookingLink {
   dureeMinutes: number;
   isActive: boolean;
   createdAt: string;
-  slots: { id: string; dateDebut: string; dateFin: string; isBooked: boolean }[];
-  bookings: { id: string; nom: string; prenom: string; email: string; dateDebut: string; statut: string }[];
+  slots: Slot[];
+  bookings: Booking[];
   _count: { slots: number; bookings: number };
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  EN_ATTENTE: 'bg-amber-500/20 text-amber-700 border-amber-500',
-  CONFIRME: 'bg-green-500/20 text-green-700 border-green-500',
-  ANNULE_CLIENT: 'bg-gray-500/20 text-gray-500 border-gray-400',
-  ANNULE_PRO: 'bg-gray-500/20 text-gray-500 border-gray-400',
-  REALISE: 'bg-purple-500/20 text-purple-700 border-purple-500',
-  NO_SHOW: 'bg-red-500/20 text-red-700 border-red-500',
+  EN_ATTENTE: 'bg-amber-100 text-amber-800 border-amber-300',
+  CONFIRME: 'bg-green-100 text-green-800 border-green-300',
+  ANNULE_CLIENT: 'bg-gray-100 text-gray-600 border-gray-300',
+  ANNULE_PRO: 'bg-gray-100 text-gray-600 border-gray-300',
+  REALISE: 'bg-purple-100 text-purple-800 border-purple-300',
+  NO_SHOW: 'bg-red-100 text-red-800 border-red-300',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -63,7 +85,9 @@ export default function BookingsPage() {
         const data = await res.json();
         setLinks(data);
       }
-    } catch {}
+    } catch (err) {
+      console.error(err);
+    }
     setIsLoading(false);
   };
 
@@ -71,6 +95,17 @@ export default function BookingsPage() {
     const url = `${window.location.origin}/book/${slug}`;
     await navigator.clipboard.writeText(url);
     toast({ title: 'Lien copié !' });
+  };
+
+  const toggleActive = async (linkId: string, isActive: boolean) => {
+    try {
+      await fetch(`/api/booking-links/${linkId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive }),
+      });
+      fetchLinks();
+    } catch {}
   };
 
   const handleConfirm = async (bookingId: string) => {
@@ -82,7 +117,7 @@ export default function BookingsPage() {
         body: JSON.stringify({ action: 'confirm' }),
       });
       if (res.ok) {
-        toast({ title: 'Réservation confirmée', description: 'Un événement a été créé dans votre calendrier.', variant: 'success' });
+        toast({ title: 'Réservation confirmée', description: 'Événement créé dans le calendrier.', variant: 'success' });
         fetchLinks();
       } else {
         const err = await res.json();
@@ -103,7 +138,7 @@ export default function BookingsPage() {
         body: JSON.stringify({ action: 'cancel' }),
       });
       if (res.ok) {
-        toast({ title: 'Réservation annulée' });
+        toast({ title: 'Réservation refusée' });
         fetchLinks();
       } else {
         const err = await res.json();
@@ -126,28 +161,28 @@ export default function BookingsPage() {
     } catch {}
   };
 
+  // Gather all bookings
   const allBookings = links.flatMap(l => 
-    l.bookings.map(b => ({ ...b, linkNom: l.nom, linkId: l.id }))
-  ).sort((a, b) => new Date(b.dateDebut).getTime() - new Date(a.dateDebut).getTime());
-
+    l.bookings.map(b => ({ ...b, linkNom: l.nom, linkId: l.id, slug: l.slug }))
+  );
   const pendingBookings = allBookings.filter(b => b.statut === 'EN_ATTENTE');
   const confirmedBookings = allBookings.filter(b => b.statut === 'CONFIRME');
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-32" />
-        <Skeleton className="h-32" />
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-40" />
+        <Skeleton className="h-40" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
         title="Réservations"
-        description="Gérez vos créneaux disponibles et réservations clients"
+        description="Gérez vos créneaux disponibles et les réservations de vos clients"
         action={
           <Button onClick={() => router.push('/bookings/new')}>
             <Plus className="h-4 w-4 mr-2" />
@@ -156,157 +191,75 @@ export default function BookingsPage() {
         }
       />
 
-      <Tabs defaultValue="pending">
-        <TabsList>
-          <TabsTrigger value="pending" className="relative">
-            En attente
-            {pendingBookings.length > 0 && (
-              <Badge className="ml-2 h-5 w-5 p-0 flex items-center justify-center bg-amber-500">
-                {pendingBookings.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="confirmed">Confirmées</TabsTrigger>
-          <TabsTrigger value="links">Créneaux actifs</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="pending" className="mt-6 space-y-4">
-          {pendingBookings.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                Aucune réservation en attente
-              </CardContent>
-            </Card>
-          ) : (
-            pendingBookings.map((booking) => (
-              <Card key={booking.id} className="border-l-4 border-l-amber-500">
-                <CardContent className="pt-6">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-semibold">{booking.prenom} {booking.nom}</span>
-                        <Badge className={STATUS_COLORS[booking.statut]}>{STATUS_LABELS[booking.statut]}</Badge>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
-                        {new Date(booking.dateDebut).toLocaleDateString('fr-FR', {
-                          weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
-                        })}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Mail className="h-4 w-4" />
-                        {booking.email}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">{booking.linkNom}</div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={() => handleConfirm(booking.id)} disabled={actionLoading === booking.id}>
-                        {actionLoading === booking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
-                        Confirmer
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleCancel(booking.id)} disabled={actionLoading === booking.id}>
-                        <X className="h-4 w-4 mr-1" />
-                        Refuser
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="confirmed" className="mt-6 space-y-4">
-          {confirmedBookings.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                Aucune réservation confirmée
-              </CardContent>
-            </Card>
-          ) : (
-            confirmedBookings.map((booking) => (
-              <Card key={booking.id} className="border-l-4 border-l-green-500">
-                <CardContent className="pt-6">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-semibold">{booking.prenom} {booking.nom}</span>
-                        <Badge className={STATUS_COLORS[booking.statut]}>{STATUS_LABELS[booking.statut]}</Badge>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
-                        {new Date(booking.dateDebut).toLocaleDateString('fr-FR', {
-                          weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
-                        })}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Mail className="h-4 w-4" />
-                        {booking.email}
-                      </div>
-                    </div>
-                    <Button size="sm" variant="ghost" onClick={() => handleCancel(booking.id)} disabled={actionLoading === booking.id} className="text-destructive hover:text-destructive">
-                      <X className="h-4 w-4 mr-1" />
-                      Annuler
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="links" className="mt-6 space-y-4">
-          {links.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center">
-                <p className="text-muted-foreground mb-4">Aucun créneau disponible créé</p>
-                <Button onClick={() => router.push('/bookings/new')}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Créer un créneau
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            links.map((link) => {
+      {/* CRÉNEAUX ACTIFS */}
+      <section>
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <LinkIcon className="h-5 w-5 text-primary" />
+          Créneaux actifs
+        </h2>
+        
+        {links.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                <Calendar className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold mb-2">Aucun créneau créé</h3>
+              <p className="text-muted-foreground mb-4">
+                Créez des créneaux disponibles pour permettre à vos clients de réserver.
+              </p>
+              <Button onClick={() => router.push('/bookings/new')}>
+                <Plus className="h-4 w-4 mr-2" />
+                Créer un créneau
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {links.map((link) => {
               const availableSlots = link.slots.filter(s => !s.isBooked && new Date(s.dateDebut) > new Date()).length;
+              const totalSlots = link.slots.length;
+              const bookingsCount = link.bookings.length;
+              
               return (
-                <Card key={link.id}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-start justify-between gap-4 flex-wrap">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <LinkIcon className="h-4 w-4 text-primary" />
-                          <span className="font-semibold">{link.nom}</span>
-                          {!link.isActive && <Badge variant="outline">Inactif</Badge>}
+                <Card key={link.id} className={cn(!link.isActive && 'opacity-60')}>
+                  <CardContent className="py-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-1">
+                          <h3 className="font-semibold truncate">{link.nom}</h3>
+                          <Badge variant="outline" className="shrink-0">
+                            {availableSlots}/{totalSlots} créneaux
+                          </Badge>
+                          {bookingsCount > 0 && (
+                            <Badge className="bg-primary/10 text-primary shrink-0">
+                              {bookingsCount} réservation(s)
+                            </Badge>
+                          )}
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
+                            <Clock className="h-3.5 w-3.5" />
                             {link.dureeMinutes} min
                           </span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-4 w-4" />
-                            {availableSlots} dispo
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <User className="h-4 w-4" />
-                            {link._count.bookings} résa
-                          </span>
+                          <span className="truncate">/book/{link.slug}</span>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => copyLink(link.slug)}>
-                          <Copy className="h-4 w-4 mr-1" />
-                          Copier
+                      
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={link.isActive}
+                          onCheckedChange={(v) => toggleActive(link.id, v)}
+                        />
+                        <Button size="icon" variant="ghost" onClick={() => copyLink(link.slug)} title="Copier le lien">
+                          <Copy className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="outline" asChild>
+                        <Button size="icon" variant="ghost" asChild title="Voir la page">
                           <a href={`/book/${link.slug}`} target="_blank" rel="noopener noreferrer">
                             <ExternalLink className="h-4 w-4" />
                           </a>
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDeleteLink(link.id)}>
+                        <Button size="icon" variant="ghost" onClick={() => handleDeleteLink(link.id)} title="Supprimer">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -314,10 +267,133 @@ export default function BookingsPage() {
                   </CardContent>
                 </Card>
               );
-            })
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* RÉSERVATIONS REÇUES */}
+      <section>
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <User className="h-5 w-5 text-primary" />
+          Réservations reçues
+          {pendingBookings.length > 0 && (
+            <Badge className="bg-amber-500 text-white">{pendingBookings.length} en attente</Badge>
           )}
-        </TabsContent>
-      </Tabs>
+        </h2>
+
+        {allBookings.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              Aucune réservation pour le moment
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {/* En attente d'abord */}
+            {pendingBookings.map((booking) => (
+              <Card key={booking.id} className="border-l-4 border-l-amber-500">
+                <CardContent className="py-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-amber-600">⏳</span>
+                        <span className="font-semibold">{booking.prenom} {booking.nom}</span>
+                        <Badge className={STATUS_COLORS[booking.statut]}>
+                          {STATUS_LABELS[booking.statut]}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-muted-foreground mb-1">
+                        {booking.linkNom}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {new Date(booking.dateDebut).toLocaleDateString('fr-FR', {
+                            weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                          })}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-3.5 w-3.5" />
+                          {booking.email}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleConfirm(booking.id)}
+                        disabled={actionLoading === booking.id}
+                      >
+                        {actionLoading === booking.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="h-4 w-4 mr-1" />
+                            Confirmer
+                          </>
+                        )}
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleCancel(booking.id)}
+                        disabled={actionLoading === booking.id}
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Refuser
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {/* Confirmées ensuite */}
+            {confirmedBookings.map((booking) => (
+              <Card key={booking.id} className="border-l-4 border-l-green-500">
+                <CardContent className="py-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-green-600">✓</span>
+                        <span className="font-semibold">{booking.prenom} {booking.nom}</span>
+                        <Badge className={STATUS_COLORS[booking.statut]}>
+                          {STATUS_LABELS[booking.statut]}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-muted-foreground mb-1">
+                        {booking.linkNom}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {new Date(booking.dateDebut).toLocaleDateString('fr-FR', {
+                            weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                          })}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-3.5 w-3.5" />
+                          {booking.email}
+                        </span>
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => handleCancel(booking.id)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Annuler
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
