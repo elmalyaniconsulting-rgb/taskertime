@@ -4,8 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { sendEmail, quoteEmailTemplate } from '@/lib/email';
 
-// POST /api/quotes/[id]/send
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
@@ -32,89 +32,74 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "Le client n'a pas d'adresse email" }, { status: 400 });
     }
 
-    const userName = `${quote.user.firstName} ${quote.user.lastName}`;
-    const clientName = quote.client.raisonSociale || `${quote.client.prenom || ''} ${quote.client.nom}`;
-    const totalTTC = Number(quote.totalTTC);
-    const formattedTotal = totalTTC.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+    const senderName = `${quote.user.firstName} ${quote.user.lastName}`;
+    const clientName = quote.client.raisonSociale || `${quote.client.prenom || ''} ${quote.client.nom}`.trim();
+    const totalTTC = Number(quote.totalTTC).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+    const validiteDate = new Date(quote.dateValidite).toLocaleDateString('fr-FR');
     const baseUrl = process.env.NEXTAUTH_URL || 'https://taskertime.vercel.app';
+    const pdfUrl = `${baseUrl}/api/quotes/${quote.id}/pdf`;
 
-    const emailSubject = `Devis ${quote.numero} — ${userName}`;
-    const emailBody = [
-      `Bonjour ${clientName},`,
-      '',
-      `Veuillez trouver ci-joint le devis ${quote.numero} d'un montant de ${formattedTotal}.`,
-      '',
-      customMessage ? customMessage + '\n' : '',
-      `Vous pouvez consulter ce devis via le lien suivant :`,
-      `${baseUrl}/api/quotes/${quote.id}/pdf`,
-      '',
-      `Cordialement,`,
-      userName,
-    ].filter(Boolean).join('\n');
+    // Generate email HTML
+    const html = quoteEmailTemplate({
+      clientName,
+      quoteNumber: quote.numero,
+      totalTTC,
+      validiteDate,
+      pdfUrl,
+      senderName,
+      customMessage,
+    });
 
-    // Try Resend if configured
-    const resendKey = process.env.RESEND_API_KEY;
-    if (resendKey && resendKey !== '' && resendKey !== 'placeholder') {
-      try {
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: `${userName} <onboarding@resend.dev>`,
-            reply_to: quote.user.email,
-            to: [quote.client.email],
-            subject: emailSubject,
-            html: `
-              <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-                <h2 style="color:#3b82f6;">Devis ${quote.numero}</h2>
-                <p>Bonjour ${clientName},</p>
-                <p>Veuillez trouver votre devis d'un montant de <strong>${formattedTotal}</strong>.</p>
-                ${customMessage ? `<p>${customMessage}</p>` : ''}
-                <div style="margin:20px 0;padding:16px;background:#f8fafc;border-radius:8px;">
-                  <p style="margin:0;"><strong>Numéro :</strong> ${quote.numero}</p>
-                  <p style="margin:4px 0 0;"><strong>Montant TTC :</strong> ${formattedTotal}</p>
-                  <p style="margin:4px 0 0;"><strong>Valide jusqu'au :</strong> ${new Date(quote.dateValidite).toLocaleDateString('fr-FR')}</p>
-                </div>
-                <a href="${baseUrl}/api/quotes/${quote.id}/pdf" style="display:inline-block;padding:12px 24px;background:#3b82f6;color:white;text-decoration:none;border-radius:6px;margin-top:10px;">Voir le devis</a>
-                <p style="margin-top:20px;">Cordialement,<br>${userName}</p>
-              </div>
-            `,
-          }),
-        });
+    // Try to send via Resend
+    const result = await sendEmail({
+      to: quote.client.email,
+      subject: `Devis ${quote.numero} — ${senderName}`,
+      html,
+    });
 
-        if (res.ok) {
-          // Update status to ENVOYE
-          await prisma.quote.update({
-            where: { id: params.id },
-            data: { statut: 'ENVOYE' },
-          });
-          return NextResponse.json({ message: 'Email envoyé avec succès' });
-        }
-        
-        // Resend failed, fall through to mailto
-      } catch {
-        // Resend error, fall through to mailto
-      }
+    // Update status to ENVOYE
+    if (quote.statut === 'BROUILLON') {
+      await prisma.quote.update({
+        where: { id: params.id },
+        data: { statut: 'ENVOYE' },
+      });
     }
 
-    // Fallback: mailto (always works)
-    // Update status to ENVOYE anyway
-    await prisma.quote.update({
-      where: { id: params.id },
-      data: { statut: 'ENVOYE' },
-    });
+    if (result.success) {
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Devis envoyé par email',
+        messageId: result.messageId,
+      });
+    } else if (result.fallback) {
+      // Fallback to mailto if Resend not configured
+      const emailSubject = encodeURIComponent(`Devis ${quote.numero} — ${senderName}`);
+      const emailBody = encodeURIComponent(
+        `Bonjour ${clientName},\n\nVeuillez trouver ci-joint notre proposition commerciale.\n\n` +
+        `Devis n° ${quote.numero}\n` +
+        `Montant TTC : ${totalTTC}\n` +
+        `Valide jusqu'au : ${validiteDate}\n\n` +
+        `Lien vers le devis : ${pdfUrl}\n\n` +
+        (customMessage ? `${customMessage}\n\n` : '') +
+        `Cordialement,\n${senderName}`
+      );
 
-    return NextResponse.json({
-      fallback: 'mailto',
-      to: quote.client.email,
-      subject: emailSubject,
-      body: emailBody,
-      pdfUrl: `${baseUrl}/api/quotes/${quote.id}/pdf`,
-    });
+      return NextResponse.json({
+        success: true,
+        fallback: 'mailto',
+        mailtoUrl: `mailto:${quote.client.email}?subject=${emailSubject}&body=${emailBody}`,
+        to: quote.client.email,
+        pdfUrl,
+        message: 'Email non configuré. Utilisez le lien mailto.',
+      });
+    } else {
+      return NextResponse.json({ 
+        success: false, 
+        error: result.error || "Échec de l'envoi",
+      }, { status: 500 });
+    }
   } catch (error: any) {
+    console.error('Quote send error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
