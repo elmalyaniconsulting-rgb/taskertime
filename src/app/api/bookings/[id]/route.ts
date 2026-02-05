@@ -3,11 +3,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 
+interface Params {
+  params: { id: string };
+}
+
 // GET /api/bookings/[id]
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, { params }: Params) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -35,10 +36,7 @@ export async function GET(
 }
 
 // PUT /api/bookings/[id] - Confirm or cancel
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, { params }: Params) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -51,7 +49,7 @@ export async function PUT(
         availabilityLink: { userId: session.user.id },
       },
       include: {
-        availabilityLink: { select: { id: true, nom: true, disponibilites: true, userId: true } },
+        availabilityLink: { select: { nom: true, disponibilites: true, userId: true } },
       },
     });
 
@@ -60,9 +58,10 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { action } = body;
+    const { action } = body; // 'confirm' | 'cancel'
 
     if (action === 'confirm') {
+      // Create event in calendar
       const disponibilites = booking.availabilityLink.disponibilites as any;
       
       const event = await prisma.event.create({
@@ -89,9 +88,10 @@ export async function PUT(
 
       return NextResponse.json({ message: 'Réservation confirmée', eventId: event.id });
     } else if (action === 'cancel') {
+      // Free up the slot
       const slot = await prisma.availabilitySlot.findFirst({
         where: {
-          availabilityLinkId: booking.availabilityLink.id,
+          availabilityLinkId: booking.availabilityLinkId,
           dateDebut: booking.dateDebut,
           isBooked: true,
         },
@@ -118,7 +118,6 @@ export async function PUT(
 
     return NextResponse.json({ error: 'Action invalide' }, { status: 400 });
   } catch (error: any) {
-    console.error('PUT booking error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

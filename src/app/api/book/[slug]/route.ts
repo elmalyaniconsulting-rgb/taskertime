@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+interface Params {
+  params: { slug: string };
+}
+
 // GET /api/book/[slug] - Public: Get available slots
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function GET(request: NextRequest, { params }: Params) {
   try {
     const link = await prisma.availabilityLink.findUnique({
       where: { slug: params.slug },
@@ -27,6 +28,7 @@ export async function GET(
       return NextResponse.json({ error: 'Lien invalide ou expiré' }, { status: 404 });
     }
 
+    // Parse lieu from disponibilites JSON
     const disponibilites = link.disponibilites as any;
 
     return NextResponse.json({
@@ -46,16 +48,12 @@ export async function GET(
       })),
     });
   } catch (error: any) {
-    console.error('GET book error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 // POST /api/book/[slug] - Public: Create a booking
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function POST(request: NextRequest, { params }: Params) {
   try {
     const body = await request.json();
     const { slotId, nom, prenom, email, telephone, message } = body;
@@ -75,6 +73,7 @@ export async function POST(
       return NextResponse.json({ error: 'Lien invalide' }, { status: 404 });
     }
 
+    // Check slot availability
     const slot = await prisma.availabilitySlot.findFirst({
       where: { id: slotId, availabilityLinkId: link.id, isBooked: false },
     });
@@ -83,6 +82,7 @@ export async function POST(
       return NextResponse.json({ error: 'Créneau non disponible' }, { status: 400 });
     }
 
+    // Create booking and mark slot as booked
     const [booking] = await prisma.$transaction([
       prisma.booking.create({
         data: {
@@ -103,6 +103,7 @@ export async function POST(
       }),
     ]);
 
+    // Create notification for pro
     await prisma.notification.create({
       data: {
         userId: link.user.id,
@@ -123,7 +124,7 @@ export async function POST(
       }
     }, { status: 201 });
   } catch (error: any) {
-    console.error('POST book error:', error);
+    console.error('Booking error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
