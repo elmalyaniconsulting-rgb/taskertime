@@ -15,7 +15,27 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-const plans = [
+interface PlanFeature {
+  text: string;
+  included: boolean;
+  note?: boolean;
+  bold?: boolean;
+}
+
+interface PlanDef {
+  slug: string;
+  nom: string;
+  description: string;
+  icon: any;
+  prixMensuel: number;
+  prixAnnuel: number;
+  popular: boolean;
+  cta: string;
+  ctaVariant: 'outline' | 'default';
+  features: PlanFeature[];
+}
+
+const plans: PlanDef[] = [
   {
     slug: 'free',
     nom: 'Gratuit',
