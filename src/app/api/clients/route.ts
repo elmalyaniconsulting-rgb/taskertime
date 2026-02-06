@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUserId, unauthorized, badRequest, serverError, success } from '@/lib/api-helpers';
+import { requireResourceLimit } from '@/lib/api-gating';
 import { z } from 'zod';
 
 const clientSchema = z.object({
@@ -97,6 +98,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const data = clientSchema.parse(body);
+
+    // Vérifier limite du plan
+    const limitBlock = await requireResourceLimit(userId, 'clients');
+    if (limitBlock) return limitBlock;
 
     const client = await prisma.client.create({
       data: {

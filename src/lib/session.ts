@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
+import { getUserPlan } from '@/lib/plans';
 
 export async function getCurrentUser() {
   const session = await getServerSession(authOptions);
@@ -53,6 +54,14 @@ export async function getCurrentUser() {
   return user;
 }
 
+export async function getCurrentUserWithPlan() {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const plan = await getUserPlan(user.id);
+  return { ...user, plan };
+}
+
 export async function requireAuth() {
   try {
     const user = await getCurrentUser();
@@ -63,7 +72,6 @@ export async function requireAuth() {
 
     return user;
   } catch (error: any) {
-    // redirect() throws a NEXT_REDIRECT error which we need to re-throw
     if (error?.digest?.startsWith('NEXT_REDIRECT')) {
       throw error;
     }

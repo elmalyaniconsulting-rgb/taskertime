@@ -18,6 +18,44 @@ export type ContractStatus = 'BROUILLON' | 'ENVOYE' | 'VU' | 'SIGNE' | 'REFUSE' 
 
 export type BookingStatus = 'EN_ATTENTE' | 'CONFIRME' | 'ANNULE_CLIENT' | 'ANNULE_PRO' | 'REALISE' | 'NO_SHOW';
 
+export type SubscriptionStatus = 'ACTIVE' | 'TRIALING' | 'PAST_DUE' | 'CANCELLED' | 'UNPAID' | 'INCOMPLETE';
+
+export type PlanSlug = 'free' | 'pro' | 'business';
+
+export interface PlanLimits {
+  maxClients: number;
+  maxFactures: number;
+  maxDevis: number;
+  maxPrestations: number;
+  stripeConnect: boolean;
+  reservationEnLigne: boolean;
+  contrats: boolean;
+  signatureElec: boolean;
+  relancesAuto: boolean;
+  statsAvancees: boolean;
+  crmComplet: boolean;
+  branding: boolean;
+  iaAssistant: boolean;
+  whatsapp: boolean;
+  googleCalSync: boolean;
+  espaceClient: boolean;
+  apiAccess: boolean;
+  multiDevise: boolean;
+  exportFec: boolean;
+  supportPrio: boolean;
+}
+
+export interface UserPlan {
+  slug: PlanSlug;
+  nom: string;
+  limits: PlanLimits;
+  status: SubscriptionStatus;
+  periodeType: 'MENSUEL' | 'ANNUEL';
+  cancelAtPeriodEnd: boolean;
+  dateFin?: string;
+  trialEnd?: string;
+}
+
 export interface Disponibilite {
   debut: string; // "09:00"
   fin: string;   // "18:00"

@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, User, Building, CreditCard, Bell, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { BillingSection } from '@/components/shared/billing-section';
 
 interface StripeStatus {
   connected: boolean;
@@ -299,6 +300,17 @@ function SettingsContent() {
         </TabsContent>
 
         <TabsContent value="billing" className="mt-6 space-y-6">
+          {/* Abonnement & Usage */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Abonnement</CardTitle>
+              <CardDescription>Gérez votre plan et suivez votre utilisation</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BillingSection />
+            </CardContent>
+          </Card>
+
           {/* Stripe Connect Section */}
           <Card className="border-primary/20">
             <CardHeader>

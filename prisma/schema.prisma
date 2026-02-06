@@ -90,8 +90,111 @@ model User {
   availabilityLinks AvailabilityLink[]
   notifications     Notification[]
   settings          UserSettings?
+  subscription      Subscription?
   
   @@map("users")
+}
+
+// ============================================================================
+// PLANS & ABONNEMENTS
+// ============================================================================
+
+model Plan {
+  id                String   @id @default(uuid())
+  
+  // Identification
+  slug              String   @unique // "free", "pro", "business"
+  nom               String   // "Gratuit", "Pro", "Business"
+  description       String?
+  
+  // Tarification
+  prixMensuel       Decimal  @db.Decimal(10, 2)
+  prixAnnuel        Decimal  @db.Decimal(10, 2)
+  stripePriceMonth  String?  // Stripe Price ID mensuel
+  stripePriceYear   String?  // Stripe Price ID annuel
+  
+  // Limites
+  maxClients        Int      @default(-1) // -1 = illimité
+  maxFactures       Int      @default(-1)
+  maxDevis          Int      @default(-1)
+  maxPrestations    Int      @default(-1)
+  
+  // Features flags
+  stripeConnect     Boolean  @default(false)
+  reservationEnLigne Boolean @default(false)
+  contrats          Boolean  @default(false)
+  signatureElec     Boolean  @default(false)
+  relancesAuto      Boolean  @default(false)
+  statsAvancees     Boolean  @default(false)
+  crmComplet        Boolean  @default(false)
+  branding          Boolean  @default(true) // true = "Powered by TaskerTime"
+  iaAssistant       Boolean  @default(false)
+  whatsapp          Boolean  @default(false)
+  googleCalSync     Boolean  @default(false)
+  espaceClient      Boolean  @default(false)
+  apiAccess         Boolean  @default(false)
+  multiDevise       Boolean  @default(false)
+  exportFec         Boolean  @default(false)
+  supportPrio       Boolean  @default(false)
+  
+  // Ordre d'affichage
+  ordre             Int      @default(0)
+  isActive          Boolean  @default(true)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  subscriptions     Subscription[]
+  
+  @@map("plans")
+}
+
+model Subscription {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  planId                String
+  plan                  Plan     @relation(fields: [planId], references: [id])
+  
+  // Stripe Billing
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  stripePriceId         String?
+  
+  // Période
+  statut                SubscriptionStatus @default(ACTIVE)
+  periodeType           PeriodeType        @default(MENSUEL)
+  dateDebut             DateTime           @default(now())
+  dateFin               DateTime?
+  dateProchainPaiement  DateTime?
+  
+  // Trial
+  trialEnd              DateTime?
+  
+  // Annulation
+  cancelAtPeriodEnd     Boolean  @default(false)
+  cancelledAt           DateTime?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELLED
+  UNPAID
+  INCOMPLETE
+}
+
+enum PeriodeType {
+  MENSUEL
+  ANNUEL
 }
 
 // ============================================================================
