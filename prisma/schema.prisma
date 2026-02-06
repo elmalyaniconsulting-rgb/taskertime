@@ -810,6 +810,10 @@ model Booking {
   // Token modification
   token               String   @unique @default(uuid())
   
+  // Rappels envoyés
+  reminderSent24h     Boolean  @default(false)
+  reminderSent1h      Boolean  @default(false)
+  
   createdAt           DateTime @default(now())
   
   @@map("bookings")

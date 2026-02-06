@@ -313,3 +313,130 @@ export function newBookingNotificationTemplate({
 
   return html;
 }
+
+// ============================================================================
+// RELANCE FACTURE
+// ============================================================================
+
+export function invoiceReminderTemplate(p: {
+  clientName: string; invoiceNumber: string; totalTTC: string; resteAPayer: string;
+  dateEcheance: string; joursRetard: number; relanceNum: number; paymentUrl?: string; senderName: string;
+}) {
+  const c = p.relanceNum >= 3 ? '#dc2626' : p.relanceNum >= 2 ? '#f59e0b' : '#3b82f6';
+  const u = p.relanceNum >= 3 ? 'URGENT' : p.relanceNum >= 2 ? 'Important' : 'Rappel';
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px}
+.h{background:${c};color:#fff;padding:30px;border-radius:10px 10px 0 0;text-align:center}
+.ct{background:#f8fafc;padding:30px;border:1px solid #e2e8f0}
+.b{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin:20px 0}
+.a{font-size:24px;font-weight:700;color:${c}}
+.btn{display:inline-block;background:${c};color:#fff;padding:12px 30px;text-decoration:none;border-radius:6px;margin:20px 0}
+.w{background:#fef2f2;border-left:4px solid ${c};padding:15px;margin:20px 0;border-radius:0 8px 8px 0}
+.ft{text-align:center;padding:20px;color:#64748b;font-size:12px}
+</style></head><body>
+<div class="h"><h1 style="margin:0">${u} — Facture ${p.invoiceNumber}</h1></div>
+<div class="ct">
+<p>Bonjour ${p.clientName},</p>
+${p.relanceNum === 1 ? '<p>Nous vous rappelons que la facture ci-dessous est arrivée à échéance.</p>'
+  : p.relanceNum === 2 ? '<p>Sauf erreur, la facture ci-dessous reste impayée malgré notre précédent rappel.</p>'
+  : '<div class="w"><p><strong>Dernier rappel avant mise en recouvrement.</strong></p></div>'}
+<div class="b">
+<p><strong>Facture n° :</strong> ${p.invoiceNumber}</p>
+<p><strong>Montant TTC :</strong> ${p.totalTTC}</p>
+<p><strong>Reste à payer :</strong> <span class="a">${p.resteAPayer}</span></p>
+<p><strong>Échéance :</strong> ${p.dateEcheance}</p>
+<p><strong>Retard :</strong> ${p.joursRetard} jour${p.joursRetard > 1 ? 's' : ''}</p>
+</div>
+${p.paymentUrl ? `<center><a href="${p.paymentUrl}" class="btn">Régler maintenant</a></center>` : '<p>Merci de procéder au règlement dans les meilleurs délais.</p>'}
+<p>Si déjà réglé, veuillez ignorer ce message.</p>
+<p>Cordialement,<br><strong>${p.senderName}</strong></p>
+</div><div class="ft"><p>Relance automatique n°${p.relanceNum} via TaskerTime</p></div>
+</body></html>`;
+}
+
+// ============================================================================
+// RAPPEL RDV
+// ============================================================================
+
+export function appointmentReminderTemplate(p: {
+  clientName: string; proName: string; eventTitle: string;
+  dateTime: string; duration: string; location?: string; timeframe: '24h' | '1h';
+}) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px}
+.h{background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;padding:30px;border-radius:10px 10px 0 0;text-align:center}
+.ct{background:#f8fafc;padding:30px;border:1px solid #e2e8f0}
+.b{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin:20px 0}
+.ft{text-align:center;padding:20px;color:#64748b;font-size:12px}
+</style></head><body>
+<div class="h"><h1 style="margin:0">${p.timeframe === '1h' ? 'Rappel — Dans 1 heure' : 'Rappel — Demain'}</h1></div>
+<div class="ct">
+<p>Bonjour ${p.clientName},</p>
+<p>${p.timeframe === '1h' ? 'Votre rendez-vous est dans 1 heure.' : 'Nous vous rappelons votre rendez-vous demain.'}</p>
+<div class="b">
+<p><strong>${p.eventTitle}</strong></p>
+<p>📅 ${p.dateTime}</p><p>⏱ ${p.duration}</p>
+${p.location ? `<p>📍 ${p.location}</p>` : ''}
+<p>👤 ${p.proName}</p>
+</div>
+<p>À bientôt !<br><strong>${p.proName}</strong></p>
+</div><div class="ft"><p>Email envoyé via TaskerTime</p></div>
+</body></html>`;
+}
+
+// ============================================================================
+// ANNULATION BOOKING
+// ============================================================================
+
+export function bookingCancellationTemplate(p: {
+  clientName: string; proName: string; bookingTitle: string; dateTime: string; reason?: string;
+}) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px}
+.h{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;padding:30px;border-radius:10px 10px 0 0;text-align:center}
+.ct{background:#f8fafc;padding:30px;border:1px solid #e2e8f0}
+.b{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin:20px 0}
+.r{background:#fef3c7;border-left:4px solid #f59e0b;padding:15px;margin:20px 0;border-radius:0 8px 8px 0}
+.ft{text-align:center;padding:20px;color:#64748b;font-size:12px}
+</style></head><body>
+<div class="h"><h1 style="margin:0">Réservation annulée</h1></div>
+<div class="ct">
+<p>Bonjour ${p.clientName},</p>
+<p>Votre réservation a été annulée.</p>
+<div class="b"><p><strong>${p.bookingTitle}</strong></p><p>📅 ${p.dateTime}</p><p>👤 ${p.proName}</p></div>
+${p.reason ? `<div class="r"><p><strong>Motif :</strong> ${p.reason}</p></div>` : ''}
+<p>N'hésitez pas à reprendre rendez-vous.</p>
+<p>Cordialement,<br><strong>${p.proName}</strong></p>
+</div><div class="ft"><p>Email envoyé via TaskerTime</p></div>
+</body></html>`;
+}
+
+// ============================================================================
+// CONFIRMATION BOOKING (envoyé au client quand le pro confirme)
+// ============================================================================
+
+export function bookingConfirmedToClientTemplate(p: {
+  clientName: string; proName: string; bookingTitle: string;
+  dateTime: string; duration: string; location?: string;
+}) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px}
+.h{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:30px;border-radius:10px 10px 0 0;text-align:center}
+.ct{background:#f8fafc;padding:30px;border:1px solid #e2e8f0}
+.b{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin:20px 0}
+.ft{text-align:center;padding:20px;color:#64748b;font-size:12px}
+</style></head><body>
+<div class="h"><div style="font-size:48px;margin-bottom:10px">✅</div><h1 style="margin:0">Réservation confirmée !</h1></div>
+<div class="ct">
+<p>Bonjour ${p.clientName},</p>
+<p>Votre réservation a été <strong>confirmée</strong> par ${p.proName}.</p>
+<div class="b">
+<p><strong>${p.bookingTitle}</strong></p>
+<p>📅 ${p.dateTime}</p><p>⏱ ${p.duration}</p>
+${p.location ? `<p>📍 ${p.location}</p>` : ''}
+<p>👤 ${p.proName}</p>
+</div>
+<p>À bientôt !<br><strong>${p.proName}</strong></p>
+</div><div class="ft"><p>Email envoyé via TaskerTime</p></div>
+</body></html>`;
+}

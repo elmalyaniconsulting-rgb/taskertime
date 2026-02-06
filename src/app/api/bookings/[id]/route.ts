@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
-
+import { sendEmail, bookingConfirmedToClientTemplate, bookingCancellationTemplate } from '@/lib/email';
 // GET /api/bookings/[id]
 export async function GET(
   request: NextRequest,
@@ -89,6 +89,29 @@ export async function PUT(
         },
       });
 
+      // Email de confirmation au client
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { firstName: true, lastName: true },
+      });
+      const proName = `${user?.firstName} ${user?.lastName}`;
+      const dt = new Date(booking.dateDebut);
+      const dateStr = dt.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const duree = Math.round((new Date(booking.dateFin).getTime() - dt.getTime()) / 60000);
+
+      sendEmail({
+        to: booking.email,
+        subject: `Réservation confirmée — ${booking.availabilityLink.nom}`,
+        html: bookingConfirmedToClientTemplate({
+          clientName: `${booking.prenom} ${booking.nom}`,
+          proName,
+          bookingTitle: booking.availabilityLink.nom,
+          dateTime: dateStr,
+          duration: `${duree} min`,
+          location: disponibilites?.lieu,
+        }),
+      }).catch(console.error);
+
       return NextResponse.json({ message: 'Réservation confirmée', eventId: event.id });
     } else if (action === 'cancel') {
       const slot = await prisma.availabilitySlot.findFirst({
@@ -114,6 +137,27 @@ export async function PUT(
           cancelReason: body.reason || null,
         },
       });
+
+      // Email d'annulation au client
+      const cancelUser = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { firstName: true, lastName: true },
+      });
+      const cancelProName = `${cancelUser?.firstName} ${cancelUser?.lastName}`;
+      const cancelDt = new Date(booking.dateDebut);
+      const cancelDateStr = cancelDt.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+      sendEmail({
+        to: booking.email,
+        subject: `Réservation annulée — ${booking.availabilityLink.nom}`,
+        html: bookingCancellationTemplate({
+          clientName: `${booking.prenom} ${booking.nom}`,
+          proName: cancelProName,
+          bookingTitle: booking.availabilityLink.nom,
+          dateTime: cancelDateStr,
+          reason: body.reason,
+        }),
+      }).catch(console.error);
 
       return NextResponse.json({ message: 'Réservation annulée' });
     }

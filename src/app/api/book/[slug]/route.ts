@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { sendEmail, bookingConfirmationTemplate, newBookingNotificationTemplate } from '@/lib/email';
 
 // GET /api/book/[slug] - Public: Get available slots
 export async function GET(
@@ -115,6 +116,48 @@ export async function POST(
         entityId: booking.id,
       },
     });
+
+    // Emails asynchrones (ne bloquent pas la réponse)
+    const baseUrl = process.env.NEXTAUTH_URL || 'https://taskertime.vercel.app';
+    const proName = `${link.user.firstName} ${link.user.lastName}`;
+    const dtStr = new Date(slot.dateDebut).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const dureeMin = Math.round((slot.dateFin.getTime() - slot.dateDebut.getTime()) / 60000);
+    const disponibilites = link.disponibilites as any;
+
+    // 1. Confirmation au client
+    sendEmail({
+      to: email,
+      subject: `Réservation envoyée — ${link.nom}`,
+      html: bookingConfirmationTemplate({
+        clientName: `${prenom} ${nom}`,
+        proName,
+        bookingTitle: link.nom,
+        dateTime: dtStr,
+        duration: `${dureeMin} min`,
+        location: disponibilites?.lieu,
+      }),
+    }).catch(console.error);
+
+    // 2. Notification au professionnel
+    const proUser = await prisma.user.findUnique({
+      where: { id: link.user.id },
+      select: { email: true },
+    });
+    if (proUser?.email) {
+      sendEmail({
+        to: proUser.email,
+        subject: `Nouvelle réservation : ${prenom} ${nom}`,
+        html: newBookingNotificationTemplate({
+          proName,
+          clientName: `${prenom} ${nom}`,
+          clientEmail: email,
+          bookingTitle: link.nom,
+          dateTime: dtStr,
+          message,
+          dashboardUrl: `${baseUrl}/bookings`,
+        }),
+      }).catch(console.error);
+    }
 
     return NextResponse.json({ 
       success: true, 

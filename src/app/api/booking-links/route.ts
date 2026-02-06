@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { nanoid } from 'nanoid';
+import { requireFeature } from '@/lib/api-gating';
 
 // GET /api/booking-links
 export async function GET(request: NextRequest) {
@@ -49,6 +50,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { nom, description, prestationId, dureeMinutes, lieu, slots } = body;
+
+    // Réservation en ligne = fonctionnalité Pro
+    const featureBlock = await requireFeature(session.user.id, 'reservationEnLigne', 'Réservation en ligne');
+    if (featureBlock) return featureBlock;
 
     if (!nom || !slots || slots.length === 0) {
       return NextResponse.json({ error: 'Nom et créneaux requis' }, { status: 400 });
