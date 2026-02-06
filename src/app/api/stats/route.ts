@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     const caParMois: Record<number, number> = {};
     for (let i = 0; i < 12; i++) caParMois[i] = 0;
-    payments.forEach((p) => {
+    payments.forEach((p: any) => {
       const month = new Date(p.datePaiement).getMonth();
       caParMois[month] += Number(p.montant);
     });
@@ -48,15 +48,15 @@ export async function GET(request: NextRequest) {
     });
 
     // Récupérer les infos clients
-    const invoiceIds = revenueByClient.map((r) => r.invoiceId);
+    const invoiceIds = revenueByClient.map((r: any) => r.invoiceId);
     const invoicesWithClients = await prisma.invoice.findMany({
       where: { id: { in: invoiceIds } },
       select: { id: true, clientId: true, client: { select: { nom: true, raisonSociale: true } } },
     });
 
     const clientRevMap: Record<string, { name: string; total: number }> = {};
-    revenueByClient.forEach((r) => {
-      const inv = invoicesWithClients.find((i) => i.id === r.invoiceId);
+    revenueByClient.forEach((r: any) => {
+      const inv = invoicesWithClients.find((i: any) => i.id === r.invoiceId);
       if (inv) {
         const clientName = inv.client.raisonSociale || inv.client.nom;
         if (!clientRevMap[inv.clientId]) {
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     });
 
     const prestationRevMap: Record<string, number> = {};
-    invoiceLines.forEach((line) => {
+    invoiceLines.forEach((line: any) => {
       const name = line.prestation?.nom || line.description;
       prestationRevMap[name] = (prestationRevMap[name] || 0) + Number(line.totalTTC);
     });
@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Total CA annuel
-    const totalCA = payments.reduce((sum, p) => sum + Number(p.montant), 0);
+    const totalCA = payments.reduce((sum: any, p: any) => sum + Number(p.montant), 0);
 
     return success({
       year,

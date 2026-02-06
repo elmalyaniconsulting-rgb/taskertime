@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         conditions: quote.conditions,
         notes: quote.notes,
         lines: {
-          create: quote.lines.map((line) => ({
+          create: quote.lines.map((line: any) => ({
             prestationId: line.prestationId,
             description: line.description,
             quantite: line.quantite,

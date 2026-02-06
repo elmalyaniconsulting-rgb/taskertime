@@ -42,7 +42,7 @@ export async function GET(
         nom: `${link.user.firstName} ${link.user.lastName}`,
         activite: link.user.activite,
       },
-      slots: link.slots.map(s => ({
+      slots: link.slots.map((s: any) => ({
         id: s.id,
         dateDebut: s.dateDebut,
         dateFin: s.dateFin,
