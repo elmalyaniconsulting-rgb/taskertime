@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  Shield,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -47,6 +48,7 @@ const navGroups = [
       { name: 'Réservation', href: '/bookings', icon: Link2 },
       { name: 'Statistiques', href: '/stats', icon: BarChart3 },
       { name: 'IA Assistant', href: '/ai-assistant', icon: Sparkles, badge: 'Pro' },
+      { name: 'Administration', href: '/admin', icon: Shield, badge: 'Admin' },
     ],
   },
 ];
