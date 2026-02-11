@@ -127,7 +127,7 @@ export default function ContractsPage() {
                     <CardTitle className="text-base flex items-center gap-2">
                       {c.nom}
                       {c.fichierOriginal && (
-                        <FileText className="h-4 w-4 text-muted-foreground" title="PDF joint" />
+                        <FileText className="h-4 w-4 text-muted-foreground" />
                       )}
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
