@@ -9,6 +9,8 @@ const contractSchema = z.object({
   clientId: z.string().optional().nullable(),
   nom: z.string().min(1, 'Nom requis'),
   description: z.string().optional().nullable(),
+  fichierBase64: z.string().optional().nullable(),
+  fichierNom: z.string().optional().nullable(),
 });
 
 // GET /api/contracts
@@ -54,6 +56,7 @@ export async function POST(request: NextRequest) {
         clientId: data.clientId,
         nom: data.nom,
         description: data.description,
+        fichierOriginal: data.fichierBase64 || null,
         statut: 'BROUILLON',
       },
       include: { client: { select: { nom: true, raisonSociale: true } } },

@@ -10,6 +10,7 @@ export const prisma =
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   });
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+// Cache in ALL environments to avoid prepared statement conflicts with PgBouncer
+globalForPrisma.prisma = prisma;
 
 export default prisma;

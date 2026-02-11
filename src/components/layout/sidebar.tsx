@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/shared/logo';
 import {
@@ -22,9 +23,22 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-const navGroups = [
+interface NavItem {
+  name: string;
+  href: string;
+  icon: any;
+  badge?: string;
+  adminOnly?: boolean;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
   {
     label: 'Principal',
     items: [
@@ -48,7 +62,7 @@ const navGroups = [
       { name: 'Réservation', href: '/bookings', icon: Link2 },
       { name: 'Statistiques', href: '/stats', icon: BarChart3 },
       { name: 'IA Assistant', href: '/ai-assistant', icon: Sparkles, badge: 'Pro' },
-      { name: 'Administration', href: '/admin', icon: Shield, badge: 'Admin' },
+      { name: 'Administration', href: '/admin', icon: Shield, badge: 'Admin', adminOnly: true },
     ],
   },
 ];
@@ -56,6 +70,16 @@ const navGroups = [
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Check admin role
+  useEffect(() => {
+    fetch('/api/admin/stats')
+      .then(res => {
+        setIsAdmin(res.ok);
+      })
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -77,66 +101,71 @@ export function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 py-4 overflow-y-auto">
-          {navGroups.map((group) => (
-            <div key={group.label} className="mb-4">
-              {!collapsed && (
-                <p className="px-4 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  {group.label}
-                </p>
-              )}
-              <div className="space-y-0.5 px-2">
-                {group.items.map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-                  const link = (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className={cn(
-                        'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
-                        isActive
-                          ? 'bg-primary/10 text-primary'
-                          : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-                        collapsed && 'justify-center px-2'
-                      )}
-                    >
-                      <item.icon className={cn(
-                        'h-[18px] w-[18px] shrink-0 transition-colors',
-                        isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
-                      )} />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1">{item.name}</span>
-                          {'badge' in item && item.badge && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full gradient-primary text-white">
-                              {item.badge}
-                            </span>
-                          )}
-                        </>
-                      )}
-                      {isActive && (
-                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full gradient-primary" />
-                      )}
-                    </Link>
-                  );
+          {navGroups.map((group) => {
+            const visibleItems = group.items.filter(item => !item.adminOnly || isAdmin);
+            if (visibleItems.length === 0) return null;
 
-                  if (collapsed) {
-                    return (
-                      <Tooltip key={item.name}>
-                        <TooltipTrigger asChild>
-                          <div className="relative">{link}</div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="font-medium">
-                          {item.name}
-                        </TooltipContent>
-                      </Tooltip>
+            return (
+              <div key={group.label} className="mb-4">
+                {!collapsed && (
+                  <p className="px-4 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    {group.label}
+                  </p>
+                )}
+                <div className="space-y-0.5 px-2">
+                  {visibleItems.map((item) => {
+                    const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                    const link = (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        className={cn(
+                          'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
+                          isActive
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                          collapsed && 'justify-center px-2'
+                        )}
+                      >
+                        <item.icon className={cn(
+                          'h-[18px] w-[18px] shrink-0 transition-colors',
+                          isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
+                        )} />
+                        {!collapsed && (
+                          <>
+                            <span className="flex-1">{item.name}</span>
+                            {item.badge && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full gradient-primary text-white">
+                                {item.badge}
+                              </span>
+                            )}
+                          </>
+                        )}
+                        {isActive && (
+                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full gradient-primary" />
+                        )}
+                      </Link>
                     );
-                  }
 
-                  return <div key={item.name} className="relative">{link}</div>;
-                })}
+                    if (collapsed) {
+                      return (
+                        <Tooltip key={item.name}>
+                          <TooltipTrigger asChild>
+                            <div className="relative">{link}</div>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="font-medium">
+                            {item.name}
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    }
+
+                    return <div key={item.name} className="relative">{link}</div>;
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </nav>
 
         {/* Settings + Collapse */}
