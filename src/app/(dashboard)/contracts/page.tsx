@@ -13,65 +13,34 @@ import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useClients } from '@/hooks/use-api';
-import { Plus, FileSignature, Loader2, Send, CheckCircle, Upload, FileText, Download } from 'lucide-react';
+import { Plus, FileSignature, Loader2, Send, CheckCircle } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 export default function ContractsPage() {
   const { toast } = useToast();
-  const { data: contracts, isLoading, refetch } = useContracts();
+  const { data: contracts, isLoading } = useContracts();
   const { data: clientsData } = useClients();
   const createContract = useCreateContract();
   const updateContract = useUpdateContract();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ nom: '', clientId: '', description: '' });
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
 
   const clients = clientsData?.clients || [];
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsUploading(true);
     try {
-      // Create contract first
-      const contractData: any = {
+      await createContract.mutateAsync({
         nom: form.nom,
         clientId: form.clientId || null,
         description: form.description || null,
-      };
-
-      // If PDF file, convert to base64 and include
-      if (pdfFile) {
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(pdfFile);
-        });
-        contractData.fichierBase64 = base64;
-        contractData.fichierNom = pdfFile.name;
-      }
-
-      const res = await fetch('/api/contracts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(contractData),
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error);
-      }
-
       toast({ title: 'Contrat créé', variant: 'success' });
       setShowCreate(false);
       setForm({ nom: '', clientId: '', description: '' });
-      setPdfFile(null);
-      refetch();
     } catch (err: any) {
       toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
     }
-    setIsUploading(false);
   };
 
   const handleStatusChange = async (id: string, statut: string) => {
@@ -80,16 +49,6 @@ export default function ContractsPage() {
       toast({ title: 'Statut mis à jour', variant: 'success' });
     } catch (err: any) {
       toast({ title: 'Erreur', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const handleDownloadPdf = (contract: any) => {
-    if (contract.fichierOriginal) {
-      // Download from stored base64 or URL
-      const link = document.createElement('a');
-      link.href = contract.fichierOriginal;
-      link.download = `contrat-${contract.nom}.pdf`;
-      link.click();
     }
   };
 
@@ -124,12 +83,7 @@ export default function ContractsPage() {
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      {c.nom}
-                      {c.fichierOriginal && (
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </CardTitle>
+                    <CardTitle className="text-base">{c.nom}</CardTitle>
                     <p className="text-sm text-muted-foreground">
                       {c.client ? (c.client.raisonSociale || c.client.nom) : 'Pas de client'}
                     </p>
@@ -142,11 +96,6 @@ export default function ContractsPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">{formatDate(c.createdAt)}</span>
                   <div className="flex gap-1">
-                    {c.fichierOriginal && (
-                      <Button variant="outline" size="sm" onClick={() => handleDownloadPdf(c)}>
-                        <Download className="h-3.5 w-3.5 mr-1" />PDF
-                      </Button>
-                    )}
                     {c.statut === 'BROUILLON' && (
                       <Button variant="outline" size="sm" onClick={() => handleStatusChange(c.id, 'ENVOYE')}>
                         <Send className="h-3.5 w-3.5 mr-1" />Envoyer
@@ -189,50 +138,10 @@ export default function ContractsPage() {
               <Label>Description</Label>
               <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} />
             </div>
-
-            {/* PDF Import — NEW */}
-            <div className="space-y-2">
-              <Label>Importer un PDF</Label>
-              <div className="border-2 border-dashed rounded-lg p-4 text-center hover:bg-muted/30 transition cursor-pointer"
-                onClick={() => document.getElementById('pdf-upload')?.click()}
-              >
-                <input
-                  id="pdf-upload"
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      if (file.size > 10 * 1024 * 1024) {
-                        toast({ title: 'Fichier trop volumineux', description: 'Maximum 10 Mo', variant: 'destructive' });
-                        return;
-                      }
-                      setPdfFile(file);
-                    }
-                  }}
-                />
-                {pdfFile ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <span className="text-sm font-medium">{pdfFile.name}</span>
-                    <Button type="button" variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPdfFile(null); }}>
-                      ×
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Cliquez pour importer un PDF (max 10 Mo)</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>Annuler</Button>
-              <Button type="submit" disabled={isUploading}>
-                {isUploading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <Button type="submit" disabled={createContract.isPending}>
+                {createContract.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Créer
               </Button>
             </DialogFooter>

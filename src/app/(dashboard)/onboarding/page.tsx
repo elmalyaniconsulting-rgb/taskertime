@@ -23,26 +23,13 @@ import {
   ArrowLeft,
   CheckCircle2,
   Loader2,
-  Calendar,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 const steps = [
   { icon: User, title: 'Votre profil', description: 'Informations personnelles' },
   { icon: Building2, title: 'Votre activité', description: 'Informations professionnelles' },
-  { icon: Calendar, title: 'Votre rythme', description: 'Organisation de travail' },
   { icon: CreditCard, title: 'Facturation', description: 'Préférences de facturation' },
   { icon: CheckCircle2, title: 'Terminé !', description: 'Bienvenue sur TaskerTime' },
-];
-
-const JOURS = [
-  { key: 'lundi', label: 'Lun' },
-  { key: 'mardi', label: 'Mar' },
-  { key: 'mercredi', label: 'Mer' },
-  { key: 'jeudi', label: 'Jeu' },
-  { key: 'vendredi', label: 'Ven' },
-  { key: 'samedi', label: 'Sam' },
-  { key: 'dimanche', label: 'Dim' },
 ];
 
 export default function OnboardingPage() {
@@ -61,12 +48,7 @@ export default function OnboardingPage() {
     adresseRue: '',
     adresseCP: '',
     adresseVille: '',
-    // Step 3 - Rythme — NEW
-    joursTravail: ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'] as string[],
-    heuresParJour: '8',
-    heureDebut: '09:00',
-    heureFin: '18:00',
-    // Step 4 - Facturation
+    // Step 3 - Facturation
     tvaApplicable: false,
     tauxTva: '20',
     tauxHoraireDefaut: '',
@@ -80,15 +62,6 @@ export default function OnboardingPage() {
     setData((prev) => ({ ...prev, [key]: value }));
   };
 
-  const toggleJour = (jour: string) => {
-    setData((prev) => ({
-      ...prev,
-      joursTravail: prev.joursTravail.includes(jour)
-        ? prev.joursTravail.filter(j => j !== jour)
-        : [...prev.joursTravail, jour],
-    }));
-  };
-
   const handleSave = async () => {
     setLoading(true);
     try {
@@ -99,12 +72,6 @@ export default function OnboardingPage() {
           ...data,
           tauxTva: parseFloat(data.tauxTva) || 20,
           tauxHoraireDefaut: parseFloat(data.tauxHoraireDefaut) || 0,
-          disponibilitesDefaut: {
-            jours: data.joursTravail,
-            heuresParJour: parseInt(data.heuresParJour),
-            heureDebut: data.heureDebut,
-            heureFin: data.heureFin,
-          },
         }),
       });
       router.push('/dashboard?welcome=true');
@@ -118,7 +85,6 @@ export default function OnboardingPage() {
   const canNext = () => {
     if (step === 0) return data.firstName.length > 0 && data.lastName.length > 0;
     if (step === 1) return data.activite.length > 0;
-    if (step === 2) return data.joursTravail.length > 0;
     return true;
   };
 
@@ -167,16 +133,28 @@ export default function OnboardingPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Prénom *</Label>
-                  <Input value={data.firstName} onChange={(e) => updateData('firstName', e.target.value)} placeholder="Mehdi" />
+                  <Input
+                    value={data.firstName}
+                    onChange={(e) => updateData('firstName', e.target.value)}
+                    placeholder="Mehdi"
+                  />
                 </div>
                 <div>
                   <Label>Nom *</Label>
-                  <Input value={data.lastName} onChange={(e) => updateData('lastName', e.target.value)} placeholder="Dupont" />
+                  <Input
+                    value={data.lastName}
+                    onChange={(e) => updateData('lastName', e.target.value)}
+                    placeholder="Dupont"
+                  />
                 </div>
               </div>
               <div>
                 <Label>Téléphone</Label>
-                <Input value={data.phone} onChange={(e) => updateData('phone', e.target.value)} placeholder="06 12 34 56 78" />
+                <Input
+                  value={data.phone}
+                  onChange={(e) => updateData('phone', e.target.value)}
+                  placeholder="06 12 34 56 78"
+                />
               </div>
             </div>
           )}
@@ -186,12 +164,21 @@ export default function OnboardingPage() {
             <div className="space-y-4">
               <div>
                 <Label>Activité *</Label>
-                <Input value={data.activite} onChange={(e) => updateData('activite', e.target.value)} placeholder="Consultant IT, Coach, Formateur..." />
+                <Input
+                  value={data.activite}
+                  onChange={(e) => updateData('activite', e.target.value)}
+                  placeholder="Consultant IT, Coach, Formateur..."
+                />
               </div>
               <div>
                 <Label>Forme juridique</Label>
-                <Select value={data.formeJuridique} onValueChange={(v) => updateData('formeJuridique', v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
+                <Select
+                  value={data.formeJuridique}
+                  onValueChange={(v) => updateData('formeJuridique', v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir..." />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="EI">Entreprise individuelle</SelectItem>
                     <SelectItem value="MICRO">Micro-entreprise</SelectItem>
@@ -205,71 +192,40 @@ export default function OnboardingPage() {
               </div>
               <div>
                 <Label>SIRET</Label>
-                <Input value={data.siret} onChange={(e) => updateData('siret', e.target.value)} placeholder="123 456 789 00012" maxLength={17} />
+                <Input
+                  value={data.siret}
+                  onChange={(e) => updateData('siret', e.target.value)}
+                  placeholder="123 456 789 00012"
+                  maxLength={17}
+                />
               </div>
               <div>
                 <Label>Adresse</Label>
-                <Input value={data.adresseRue} onChange={(e) => updateData('adresseRue', e.target.value)} placeholder="Rue" className="mb-2" />
+                <Input
+                  value={data.adresseRue}
+                  onChange={(e) => updateData('adresseRue', e.target.value)}
+                  placeholder="Rue"
+                  className="mb-2"
+                />
                 <div className="grid grid-cols-3 gap-2">
-                  <Input value={data.adresseCP} onChange={(e) => updateData('adresseCP', e.target.value)} placeholder="CP" />
-                  <Input value={data.adresseVille} onChange={(e) => updateData('adresseVille', e.target.value)} placeholder="Ville" className="col-span-2" />
+                  <Input
+                    value={data.adresseCP}
+                    onChange={(e) => updateData('adresseCP', e.target.value)}
+                    placeholder="CP"
+                  />
+                  <Input
+                    value={data.adresseVille}
+                    onChange={(e) => updateData('adresseVille', e.target.value)}
+                    placeholder="Ville"
+                    className="col-span-2"
+                  />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Step 3 - Rythme — NEW */}
+          {/* Step 3 - Facturation */}
           {step === 2 && (
-            <div className="space-y-5">
-              <div>
-                <Label className="mb-3 block">Jours de travail</Label>
-                <div className="flex gap-2">
-                  {JOURS.map(({ key, label }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => toggleJour(key)}
-                      className={cn(
-                        'flex-1 py-2.5 rounded-lg text-sm font-medium transition-all border',
-                        data.joursTravail.includes(key)
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background text-muted-foreground border-border hover:bg-accent'
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label>Heures de travail par jour</Label>
-                <Select value={data.heuresParJour} onValueChange={(v) => updateData('heuresParJour', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {[4, 5, 6, 7, 8, 9, 10, 12].map(h => (
-                      <SelectItem key={h} value={String(h)}>{h} heures</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Début de journée</Label>
-                  <Input type="time" value={data.heureDebut} onChange={(e) => updateData('heureDebut', e.target.value)} />
-                </div>
-                <div>
-                  <Label>Fin de journée</Label>
-                  <Input type="time" value={data.heureFin} onChange={(e) => updateData('heureFin', e.target.value)} />
-                </div>
-              </div>
-              <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
-                Ces informations permettront de calculer votre taux de remplissage et d&apos;optimiser votre planning.
-              </div>
-            </div>
-          )}
-
-          {/* Step 4 - Facturation */}
-          {step === 3 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
@@ -278,48 +234,76 @@ export default function OnboardingPage() {
                     Si non, mention &quot;TVA non applicable, art. 293 B du CGI&quot;
                   </p>
                 </div>
-                <Switch checked={data.tvaApplicable} onCheckedChange={(v) => updateData('tvaApplicable', v)} />
+                <Switch
+                  checked={data.tvaApplicable}
+                  onCheckedChange={(v) => updateData('tvaApplicable', v)}
+                />
               </div>
               {data.tvaApplicable && (
                 <div>
                   <Label>Taux TVA (%)</Label>
-                  <Input type="number" value={data.tauxTva} onChange={(e) => updateData('tauxTva', e.target.value)} />
+                  <Input
+                    type="number"
+                    value={data.tauxTva}
+                    onChange={(e) => updateData('tauxTva', e.target.value)}
+                  />
                 </div>
               )}
               <div>
                 <Label>Taux horaire par défaut (€)</Label>
-                <Input type="number" value={data.tauxHoraireDefaut} onChange={(e) => updateData('tauxHoraireDefaut', e.target.value)} placeholder="50" />
+                <Input
+                  type="number"
+                  value={data.tauxHoraireDefaut}
+                  onChange={(e) => updateData('tauxHoraireDefaut', e.target.value)}
+                  placeholder="50"
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Préfixe facture</Label>
-                  <Input value={data.prefixeFacture} onChange={(e) => updateData('prefixeFacture', e.target.value)} placeholder="F" />
+                  <Input
+                    value={data.prefixeFacture}
+                    onChange={(e) => updateData('prefixeFacture', e.target.value)}
+                    placeholder="F"
+                  />
                 </div>
                 <div>
                   <Label>Préfixe devis</Label>
-                  <Input value={data.prefixeDevis} onChange={(e) => updateData('prefixeDevis', e.target.value)} placeholder="D" />
+                  <Input
+                    value={data.prefixeDevis}
+                    onChange={(e) => updateData('prefixeDevis', e.target.value)}
+                    placeholder="D"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>IBAN</Label>
-                  <Input value={data.iban} onChange={(e) => updateData('iban', e.target.value)} placeholder="FR76 1234..." />
+                  <Input
+                    value={data.iban}
+                    onChange={(e) => updateData('iban', e.target.value)}
+                    placeholder="FR76 1234..."
+                  />
                 </div>
                 <div>
                   <Label>BIC</Label>
-                  <Input value={data.bic} onChange={(e) => updateData('bic', e.target.value)} placeholder="BNPAFRPP" />
+                  <Input
+                    value={data.bic}
+                    onChange={(e) => updateData('bic', e.target.value)}
+                    placeholder="BNPAFRPP"
+                  />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Step 5 - Terminé */}
-          {step === 4 && (
+          {/* Step 4 - Terminé */}
+          {step === 3 && (
             <div className="text-center py-6">
               <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
               <h3 className="text-xl font-bold mb-2">Votre compte est prêt !</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Commencez à utiliser TaskerTime immédiatement.
+                Vous êtes sur le plan Gratuit. Vous pouvez commencer à utiliser TaskerTime immédiatement.
               </p>
               <div className="rounded-lg bg-muted/50 p-4 text-left text-sm space-y-2 mb-4">
                 <p>Prochaines étapes recommandées :</p>
@@ -332,7 +316,7 @@ export default function OnboardingPage() {
 
           {/* Navigation */}
           <div className="flex items-center justify-between mt-6 pt-4 border-t">
-            {step > 0 && step < 4 ? (
+            {step > 0 && step < 3 ? (
               <Button variant="ghost" onClick={() => setStep(step - 1)}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Retour
@@ -341,15 +325,15 @@ export default function OnboardingPage() {
               <div />
             )}
 
-            {step < 3 && (
+            {step < 2 && (
               <Button onClick={() => setStep(step + 1)} disabled={!canNext()}>
                 Suivant
                 <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
             )}
 
-            {step === 3 && (
-              <Button onClick={() => { handleSave(); setStep(4); }} disabled={loading}>
+            {step === 2 && (
+              <Button onClick={() => { handleSave(); setStep(3); }} disabled={loading}>
                 {loading ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
@@ -359,7 +343,7 @@ export default function OnboardingPage() {
               </Button>
             )}
 
-            {step === 4 && (
+            {step === 3 && (
               <Button onClick={() => router.push('/dashboard')} className="w-full">
                 Accéder à mon tableau de bord
                 <ArrowRight className="h-4 w-4 ml-2" />
@@ -369,7 +353,7 @@ export default function OnboardingPage() {
         </div>
 
         {/* Skip */}
-        {step < 4 && (
+        {step < 3 && (
           <p className="text-center mt-4">
             <button
               onClick={() => router.push('/dashboard')}
